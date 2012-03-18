@@ -1,0 +1,51 @@
+expressions main 0
+
+eval_ae_sets main 3
+eval_ae 0 
+eval_ae 1 
+eval_ae 2 
+
+kill_ae_sets main 3
+kill_ae 0 
+kill_ae 1 
+kill_ae 2 
+
+available_exprs main 3
+avail_exprs_out 0 
+avail_exprs_out 1 
+avail_exprs_out 2 
+
+expressions foo 0
+
+eval_ae_sets foo 3
+eval_ae 0 
+eval_ae 1 
+eval_ae 2 
+
+kill_ae_sets foo 3
+kill_ae 0 
+kill_ae 1 
+kill_ae 2 
+
+available_exprs foo 3
+avail_exprs_out 0 
+avail_exprs_out 1 
+avail_exprs_out 2 
+
+expressions bar 0
+
+eval_ae_sets bar 3
+eval_ae 0 
+eval_ae 1 
+eval_ae 2 
+
+kill_ae_sets bar 3
+kill_ae 0 
+kill_ae 1 
+kill_ae 2 
+
+available_exprs bar 3
+avail_exprs_out 0 
+avail_exprs_out 1 
+avail_exprs_out 2 
+

@@ -1,0 +1,20 @@
+
+Author:
+    Peter Goodman
+
+How to compile:
+    Run the 'make' command. If this fails with issues about the bin and
+    bin/data_flow folders not existing, then those folders will need to be
+    manually created. Otherwise, the makefile will attempt to automatically
+    create them.
+
+Notable/clever things:
+    Run 'make clean ; make debug' to generate a DOT graph of the original CFG.
+    I updated the dot output to use subgraph clusters in order to debug some
+    issues where I had multiple functions and the numbering for the basic blocks
+    in the graph were the same.
+    
+    I ended up implementing equivalence through operand re-ordering, but it
+    turns out that was not originally needed, so it was left commented out.
+    
+    

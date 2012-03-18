@@ -1,0 +1,67 @@
+expressions infinity 1
+expr 1 15
+
+eval_ae_sets infinity 7
+eval_ae 0 0
+eval_ae 1 0
+eval_ae 2 1
+eval_ae 3 0
+eval_ae 4 0
+eval_ae 5 0
+eval_ae 6 0
+
+kill_ae_sets infinity 7
+kill_ae 0 0
+kill_ae 1 0
+kill_ae 2 1
+kill_ae 3 0
+kill_ae 4 0
+kill_ae 5 0
+kill_ae 6 0
+
+available_exprs infinity 7
+avail_exprs_out 0 0
+avail_exprs_out 1 0
+avail_exprs_out 2 1
+avail_exprs_out 3 1
+avail_exprs_out 4 1
+avail_exprs_out 5 0
+avail_exprs_out 6 0
+
+expressions never 2
+expr 1 13
+expr 2 21
+
+eval_ae_sets never 9
+eval_ae 0 00
+eval_ae 1 00
+eval_ae 2 00
+eval_ae 3 00
+eval_ae 4 01
+eval_ae 5 00
+eval_ae 6 00
+eval_ae 7 00
+eval_ae 8 00
+
+kill_ae_sets never 9
+kill_ae 0 00
+kill_ae 1 11
+kill_ae 2 01
+kill_ae 3 11
+kill_ae 4 01
+kill_ae 5 00
+kill_ae 6 01
+kill_ae 7 00
+kill_ae 8 00
+
+available_exprs never 9
+avail_exprs_out 0 00
+avail_exprs_out 1 00
+avail_exprs_out 2 00
+avail_exprs_out 3 00
+avail_exprs_out 4 01
+avail_exprs_out 5 01
+avail_exprs_out 6 00
+avail_exprs_out 7 00
+avail_exprs_out 8 00
+

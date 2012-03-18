@@ -1,0 +1,51 @@
+expressions weird_loop 4
+expr 1 3
+expr 2 13
+expr 3 18
+expr 4 28
+
+eval_ae_sets weird_loop 13
+eval_ae 0 0000
+eval_ae 1 0000
+eval_ae 2 1000
+eval_ae 3 0000
+eval_ae 4 0100
+eval_ae 5 0010
+eval_ae 6 0000
+eval_ae 7 0001
+eval_ae 8 1000
+eval_ae 9 0000
+eval_ae 10 0000
+eval_ae 11 0000
+eval_ae 12 0000
+
+kill_ae_sets weird_loop 13
+kill_ae 0 0000
+kill_ae 1 0000
+kill_ae 2 0000
+kill_ae 3 0000
+kill_ae 4 1111
+kill_ae 5 0000
+kill_ae 6 0000
+kill_ae 7 1111
+kill_ae 8 0000
+kill_ae 9 0000
+kill_ae 10 1111
+kill_ae 11 0000
+kill_ae 12 0000
+
+available_exprs weird_loop 13
+avail_exprs_out 0 0000
+avail_exprs_out 1 0000
+avail_exprs_out 2 1000
+avail_exprs_out 3 1000
+avail_exprs_out 4 0100
+avail_exprs_out 5 1010
+avail_exprs_out 6 1010
+avail_exprs_out 7 0001
+avail_exprs_out 8 1000
+avail_exprs_out 9 1000
+avail_exprs_out 10 0000
+avail_exprs_out 11 1010
+avail_exprs_out 12 1010
+
