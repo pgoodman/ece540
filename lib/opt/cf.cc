@@ -28,8 +28,14 @@ extern "C" {
 /// maintains a mapping of non-floating-point-type temporary registers
 /// whose values are loaded with constants
 struct cf_state {
+
+    /// map of temporary registers to the values they contain
     std::map<simple_reg *, int> constants;
+
+    /// map of non-temporary registers to the values they currently contain
     std::map<simple_reg *, int> peephole;
+
+    /// true iff any constant folding was applied
     bool updated;
 
     /// return true iff a constant is stored in the register. if the register
@@ -311,6 +317,11 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
             }
 
             in->prev = lin;
+
+            // make sure blocks are kept consistent
+            if(bb->first == in) {
+                bb->first = lin;
+            }
 
             state.update(ldest, result);
             state.update(dest, result);
