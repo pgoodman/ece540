@@ -20,6 +20,7 @@ extern "C" {
 #include "include/basic_block.h"
 #include "include/instr.h"
 #include "include/operator.h"
+#include "include/data_flow/var_def.h"
 
 #include <map>
 #include <cstring>
@@ -28,19 +29,60 @@ extern "C" {
 /// whose values are loaded with constants
 struct cf_state {
     std::map<simple_reg *, int> constants;
+    std::map<simple_reg *, int> peephole;
     bool updated;
 
     /// return true iff a constant is stored in the register. if the register
     /// contains a constant, assign the constant to the variable constant passed
     /// in by reference
     bool get_constant(simple_reg *reg, int &constant) throw() {
-        if(TEMP_REG != reg->kind
-        || 0U == constants.count(reg)) {
-            return false;
+        if(0U != peephole.count(reg)) {
+            constant = peephole[reg];
+            return true;
         }
 
-        constant = constants[reg];
-        return true;
+        if(0U != constants.count(reg)) {
+            constant = constants[reg];
+            return true;
+        }
+
+        return false;
+    }
+
+    /// clear the peephole cache
+    void clear(void) throw() {
+        peephole.clear();
+    }
+
+    /// update the set of constants
+    void update(simple_reg *reg, int value) throw() {
+        if(TEMP_REG == reg->kind) {
+            constants[reg] = value;
+        } else {
+            peephole[reg] = value;
+        }
+    }
+
+    /// does a simple form of local constant propagation for constant folding
+    void peek(simple_instr *in) throw() {
+        simple_reg *source(0), *dest(0);
+        if(CPY_OP == in->opcode) {
+            dest = in->u.base.dst;
+            source = in->u.base.src1;
+
+            // re-assign in peephole; inductive case
+            if(peephole.count(source) && TEMP_REG != dest->kind) {
+                peephole[dest] = peephole[source];
+
+            // assign into peephold; base case
+            } else if(constants.count(source)) {
+                peephole[dest] = constants[source];
+            }
+
+        // any definition kills the register
+        } else if(for_each_var_def(in, dest)) {
+            peephole.erase(dest);
+        }
     }
 };
 
@@ -179,8 +221,12 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
         return true;
     }
 
+    state.clear();
+
     const simple_instr *end(bb->last->next);
     for(; in != end; in = in->next) {
+        state.peek(in);
+
         if(!instr::is_expression(in)) {
             continue;
         }
@@ -189,6 +235,13 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
         int result(0);
 
         switch(in->opcode) {
+
+        // type conversion, between signed and unsigned, no bits change
+        case CVT_OP:
+            if(state.get_constant(in->u.base.src1, result)) {
+                updated_locally = true;
+            }
+            break;
 
         // unary minus
         case NEG_OP:
@@ -209,7 +262,9 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
         // any binary operator
         default:
             const int op(in->opcode - ADD_OP);
+            fprintf(stderr, "Found op(%d) to %d\n", op, in->u.base.dst->num);
             if(fold_funcs[op](state, in->u.base.src1, in->u.base.src2, result)) {
+                fprintf(stderr, "   result of op is %d\n", result);
                 updated_locally = true;
             }
             break;
@@ -225,14 +280,21 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
         // update the instruction in place
         if(TEMP_REG == dest->kind) {
 
+            fprintf(stderr, "   folding in-place (%d)\n", dest->num);
+
             in->opcode = LDC_OP;
             in->u.ldc.dst = dest;
             in->u.ldc.value.format = IMMED_INT;
             in->u.ldc.value.u.ival = result;
 
+            state.update(dest, result);
+
         // add in a new instruction and update the instruction
         // to be a cpy
         } else {
+
+            fprintf(stderr, "   folding in-place with ldc\n");
+
             simple_instr *lin(new_instr(LDC_OP, dest->var->type));
             simple_reg *ldest(new_register(dest->var->type, TEMP_REG));
 
@@ -255,6 +317,9 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
             }
 
             in->prev = lin;
+
+            state.update(ldest, result);
+            state.update(dest, result);
         }
 
         state.updated = true;
@@ -273,11 +338,34 @@ static bool find_constants(basic_block *bb, cf_state &state) throw() {
     const simple_instr *end(bb->last->next);
     for(; in != end; in = in->next) {
         if(LDC_OP != in->opcode
+        || TEMP_REG != in->u.ldc.dst->kind
         || IMMED_INT != in->u.ldc.value.format) {
             continue;
         }
 
         state.constants[in->u.ldc.dst] = in->u.ldc.value.u.ival;
+    }
+
+    return true;
+}
+
+/// go find basic copies of temporary variables
+static bool find_temp_copies(basic_block *bb, cf_state &state) throw() {
+    simple_instr *in(bb->first);
+    if(0 == in) {
+        return true;
+    }
+
+    const simple_instr *end(bb->last->next);
+    for(; in != end; in = in->next) {
+        if(CPY_OP != in->opcode
+        || TEMP_REG != in->u.base.dst->kind
+        || TEMP_REG != in->u.base.src1->kind
+        || 0U == state.constants.count(in->u.base.src1)) {
+            continue;
+        }
+
+        state.constants[in->u.base.dst] = state.constants[in->u.base.src1];
     }
 
     return true;
@@ -292,6 +380,7 @@ bool fold_constants(cfg &graph) throw() {
     graph.for_each_basic_block(find_constants, state);
 
     if(!state.constants.empty()) {
+        graph.for_each_basic_block(find_temp_copies, state);
         graph.for_each_basic_block(fold_constants, state);
     }
 
