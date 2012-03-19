@@ -262,9 +262,7 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
         // any binary operator
         default:
             const int op(in->opcode - ADD_OP);
-            fprintf(stderr, "Found op(%d) to %d\n", op, in->u.base.dst->num);
             if(fold_funcs[op](state, in->u.base.src1, in->u.base.src2, result)) {
-                fprintf(stderr, "   result of op is %d\n", result);
                 updated_locally = true;
             }
             break;
@@ -280,8 +278,6 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
         // update the instruction in place
         if(TEMP_REG == dest->kind) {
 
-            fprintf(stderr, "   folding in-place (%d)\n", dest->num);
-
             in->opcode = LDC_OP;
             in->u.ldc.dst = dest;
             in->u.ldc.value.format = IMMED_INT;
@@ -292,8 +288,6 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
         // add in a new instruction and update the instruction
         // to be a cpy
         } else {
-
-            fprintf(stderr, "   folding in-place with ldc\n");
 
             simple_instr *lin(new_instr(LDC_OP, dest->var->type));
             simple_reg *ldest(new_register(dest->var->type, TEMP_REG));
@@ -366,6 +360,7 @@ static bool find_temp_copies(basic_block *bb, cf_state &state) throw() {
         }
 
         state.constants[in->u.base.dst] = state.constants[in->u.base.src1];
+        state.updated = true;
     }
 
     return true;
@@ -380,7 +375,13 @@ bool fold_constants(cfg &graph) throw() {
     graph.for_each_basic_block(find_constants, state);
 
     if(!state.constants.empty()) {
-        graph.for_each_basic_block(find_temp_copies, state);
+        state.updated = true;
+
+        while(state.updated) {
+            state.updated = false;
+            graph.for_each_basic_block(find_temp_copies, state);
+        }
+
         graph.for_each_basic_block(fold_constants, state);
     }
 
