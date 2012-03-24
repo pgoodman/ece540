@@ -394,6 +394,11 @@ void loop_map::clean_up(void) throw() {
     }
 }
 
+loop_map::loop_map(void) throw()
+    : num_loops(0U)
+    , loops(0)
+{ }
+
 loop_map::~loop_map(void) throw() {
     clean_up();
 }

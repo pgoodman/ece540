@@ -85,7 +85,7 @@ loop_map &optimizer::get(optimizer &self, tag<loop_map>) throw() {
 
 /// dependency injector with no dependent arguments
 void optimizer::inject0(void (*callback)(optimizer &), optimizer &self) throw() {
-    memcpy(&prev_dirty, &dirty, sizeof dirty);
+    memcpy(&self.prev_dirty, &self.dirty, sizeof(dirty_state));
     callback(self);
 }
 
@@ -99,13 +99,31 @@ optimizer::pass optimizer::add_pass(void (*func)(optimizer &)) throw() {
     return pass_id;
 }
 
-/// add a cascading relationship between two optimization passes
-void optimizer::cascade_cond(pass &first, pass &second, bool first_succeeds) throw() {
-    if(first_succeeds) {
-        cascades[0][first].insert(second);
-    } else {
-        cascades[1][first].insert(second);
-    }
+/// notify the dirty struct that some things have been changed
+
+void optimizer::changed_def(void) throw() {
+    dirty.ae = true;
+    dirty.var_use = true;
+}
+
+void optimizer::changed_use(void) throw() {
+    dirty.ae = true;
+    dirty.var_use = true;
+}
+
+void optimizer::changed_block(void) throw() {
+    dirty.cfg = true;
+}
+
+/// add an unconditional cascading relation between two optimization passes
+void optimizer::cascade(pass &first, pass &second) throw() {
+    cascade_if(first, second, true);
+    cascade_if(first, second, false);
+}
+
+/// add a conditional cascading relationship between two optimization passes
+void optimizer::cascade_if(pass &first, pass &second, bool first_succeeds) throw() {
+    cascades[!!first_succeeds][first].insert(second);
 }
 
 /// run the optimizer

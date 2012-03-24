@@ -9,5 +9,5 @@
 #include "include/opt/dce.h"
 
 void eliminate_dead_code(optimizer &, cfg &) throw() {
-
+    printf("running dce\n");
 }

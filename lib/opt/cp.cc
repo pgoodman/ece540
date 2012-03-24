@@ -9,6 +9,6 @@
 #include "include/opt/cp.h"
 
 void propagate_copies(optimizer &, cfg &) throw() {
-
+    printf("running cp\n");
 }
 

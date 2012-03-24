@@ -11,10 +11,6 @@
 
 static optimizer::pass CF, CP, DCE;
 
-static void C1(optimizer &o) throw() {
-
-}
-
 /// set up and run the optimizer
 ///
 /// the optimizer is organized in terms of groups of single pass optimizations,
@@ -31,8 +27,10 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     o.cascade(CP, CF);
     o.cascade(CF, DCE);
 
+    o.run(CP);
+
     // groups of optimizations
-    optimizer::pass group_C1(o.add_pass(C1));
+    //optimizer::pass group_C1(o.add_pass(C1));
 
     return print_dot(in_list, proc_name);
 }

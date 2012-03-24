@@ -77,7 +77,7 @@ private:
         typedef void (opt_func)(optimizer &, T0 &);
         opt_func *typed_callback(unsafe_cast<opt_func *>(callback));
         T0 &a0(get(self, tag<T0>()));
-        memcpy(&prev_dirty, &dirty, sizeof dirty);
+        memcpy(&self.prev_dirty, &self.dirty, sizeof(dirty_state));
         typed_callback(self, a0);
     }
 
@@ -87,7 +87,7 @@ private:
         opt_func *typed_callback(unsafe_cast<opt_func *>(callback));
         T0 &a0(get(self, tag<T0>()));
         T1 &a1(get(self, tag<T1>()));
-        memcpy(&prev_dirty, &dirty, sizeof dirty);
+        memcpy(&self.prev_dirty, &self.dirty, sizeof(dirty_state));
         typed_callback(self, a0, a1);
     }
 
@@ -98,7 +98,7 @@ private:
         T0 &a0(get(self, tag<T0>()));
         T1 &a1(get(self, tag<T1>()));
         T2 &a2(get(self, tag<T2>()));
-        memcpy(&prev_dirty, &dirty, sizeof dirty);
+        memcpy(&self.prev_dirty, &self.dirty, sizeof(dirty_state));
         typed_callback(self, a0, a1, a2);
     }
 
@@ -120,11 +120,9 @@ public:
 
     optimizer(simple_instr *) throw();
 
-    bool added_def(void) throw();
-    bool removed_use(void) throw();
-    bool added_block(void) throw();
-    bool removed_block(void) throw();
-    bool changed_control_flow(void) throw();
+    void changed_def(void) throw();
+    void changed_use(void) throw();
+    void changed_block(void) throw();
 
     /// functions to add optimizations passes to the optimizer
 
@@ -160,10 +158,13 @@ public:
         return pass_id;
     }
 
+    /// add an unconditional cascading relation between two optimization passes
+    void cascade(pass &, pass &) throw();
+
     /// add a conditional cascading relation between two optimization passes.
     /// true: if the first changes the cfg, run the second
     /// false: if the first doesn't change the cfg, run the second
-    void cascade_cond(pass &, pass &, bool) throw();
+    void cascade_if(pass &, pass &, bool) throw();
 
     /// run an optimization pass, and recursive cascade; returns true iff
     /// anything was done

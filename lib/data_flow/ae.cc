@@ -207,7 +207,7 @@ bool available_expression_map::find_expression(basic_block *bb, available_expres
 }
 
 /// map all expressions to ids
-available_expression_map::available_expression_map(cfg &flow_graph) throw()
+available_expression_map::available_expression_map(void) throw()
     : next_expression_id(0U)
     , num_basic_blocks(0)
 { }
@@ -413,8 +413,7 @@ void find_available_expressions(cfg &flow, available_expression_map &ae) throw()
 
     ae.num_basic_blocks = flow.size();
     ae.expression_sets.assign(ae.num_basic_blocks, empty_set);
-
-    flow.for_each_basic_block(&available_expression_map::find_expression, &ae);
+    flow.for_each_basic_block(&available_expression_map::find_expression, ae);
 
     compute_available_expressions(flow, ae);
 }

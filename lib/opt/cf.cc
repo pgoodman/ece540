@@ -253,7 +253,7 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
             } else {
                 in->opcode = NOP_OP;
             }
-            state.opt->changed_control_flow();
+            state.opt->changed_block();
             continue;
 
         // branch false
@@ -269,7 +269,7 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
                 in->opcode = NOP_OP;
             }
 
-            state.opt->changed_control_flow();
+            state.opt->changed_block();
             continue;
 
         // type conversion, between signed and unsigned, no bits change
@@ -329,7 +329,7 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
         // to be a cpy
         } else {
 
-            state.opt->added_def();
+            state.opt->changed_def();
 
             simple_instr *lin(new_instr(LDC_OP, dest->var->type));
             simple_reg *ldest(new_register(dest->var->type, TEMP_REG));
@@ -363,7 +363,7 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
             state.update(dest, result);
         }
 
-        state.opt->removed_use();
+        state.opt->changed_use();
     }
 
     return true;
