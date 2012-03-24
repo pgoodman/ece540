@@ -107,6 +107,10 @@ static void try_propagate_copy(
 
     assert(0 != copied_reg);
 
+    if(PSEUDO_REG != copied_reg->kind) {
+        return;
+    }
+
     s.o->changed_use();
     *use_of_reg = copied_reg;
 }
@@ -126,6 +130,7 @@ static bool propagate_in_bb(basic_block *bb, cp_state &s) {
 }
 
 void propagate_copies(optimizer &o, cfg &flow, use_def_map &ud) throw() {
+    printf("// cp\n");
 #ifndef ECE540_DISABLE_CP
     cp_state state;
     state.o = &o;

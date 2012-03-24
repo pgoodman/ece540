@@ -19,8 +19,8 @@ int main(void) {
             y = x;
             k = y;
             j = x;
-        } else {
-            j = y;
+        } else if(j) {
+            j = 10;
         }
 
         x = y + y + z + k + j;

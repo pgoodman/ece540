@@ -37,6 +37,11 @@ fprint_instr (FILE *fd, simple_instr *s)
     int n = 0;
     switch (s->opcode) {
 
+    case NOP_OP: {
+        fprintf(fd, "&nbsp; &nbsp; &nbsp; nop<BR ALIGN=\"LEFT\"/>");
+        break;
+    }
+
     case LOAD_OP: {
         fprintf(fd, "&nbsp; &nbsp; &nbsp; %s ", simple_op_name(s->opcode));
         fprint_type(fd, s->type);
