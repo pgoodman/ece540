@@ -74,18 +74,15 @@ static void try_propagate_copy(
     simple_instr *in,
     cp_state &s
 ) throw() {
-    assert(0 != reg);
-
-    if(PSEUDO_REG != reg->kind) {
+    if(0 == reg || PSEUDO_REG != reg->kind) {
         return;
     }
 
     var_def_set::const_iterator def(s.rd->find(reg))
                               , end(s.rd->end());
 
-    // no defs reach this use; this is weird.
+    // no defs reach this use; likely a parameter to a function call
     if(def == end) {
-        diag::error("No definitions reach the use of '%s'.", reg->var->name);
         return;
     }
 
