@@ -239,6 +239,7 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
 
         bool updated_locally(false);
         int result(0);
+        int64_t result64(0);
 
         switch(in->opcode) {
 
@@ -282,7 +283,6 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
 
             // try not to lose precision when using unsigned/signed types as
             // the source of the mbr
-            int64_t result64(0);
             if(UNSIGNED_TYPE == in->u.bj.src->var->type->base) {
                 unsigned uresult(0);
                 memcpy(&uresult, &result, sizeof uresult);
