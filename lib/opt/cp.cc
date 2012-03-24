@@ -114,8 +114,9 @@ static void try_propagate_copy(
 
 /// propagate copies at the basic block level
 static bool propagate_in_bb(basic_block *bb, cp_state &s) {
-
-    // every basic block has at least one instruction (a label)
+    if(0 == bb->last) {
+        return true;
+    }
     const simple_instr *past_end(bb->last->next);
     for(simple_instr *in(bb->first); past_end != in; in = in->next) {
         s.rd = &((*(s.ud))(in));
@@ -127,7 +128,7 @@ static bool propagate_in_bb(basic_block *bb, cp_state &s) {
 }
 
 void propagate_copies(optimizer &o, cfg &flow, use_def_map &ud) throw() {
-    printf("// cp\n");
+    fprintf(stderr, "// cp\n");
 #ifndef ECE540_DISABLE_CP
     cp_state state;
     state.o = &o;

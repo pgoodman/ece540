@@ -173,6 +173,9 @@ public:
     /// run an optimization pass, and recursive cascade; returns true iff
     /// anything was done
     bool run(pass &) throw();
+
+    /// return the first instruction of the program
+    simple_instr *first_instruction(void) throw();
 };
 
 

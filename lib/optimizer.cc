@@ -14,6 +14,10 @@ optimizer::optimizer(simple_instr *in) throw()
     : instructions(in)
     , flow_graph(in)
 {
+    // make sure to get the potentially updated first instruction (forced to be
+    // a label)
+    instructions = flow_graph.entry()->next->first;
+
     memset(&dirty, ~0, sizeof dirty);
 
     dirty.cfg = false;
@@ -173,4 +177,8 @@ bool optimizer::run(pass &first) throw() {
     }
 
     return ret;
+}
+
+simple_instr *optimizer::first_instruction(void) throw() {
+    return instructions;
 }

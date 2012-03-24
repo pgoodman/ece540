@@ -184,7 +184,7 @@ cfg::cfg(simple_instr *instr_list_) throw()
     }
 
     // get all basic blocks
-    for(simple_instr *begin(instr_list); 0 != begin; ) {
+    for(simple_instr *begin(instr_list_); 0 != begin; ) {
         unsigned num_instructions(0);
         simple_instr *end(find_bb_end(begin, num_instructions));
         make_bb(begin, end, num_instructions);
@@ -194,6 +194,11 @@ cfg::cfg(simple_instr *instr_list_) throw()
     // add in the exit basic block, and start off the predecessors/successors
     // relation
     exit_ = make_bb(0, 0, 0U);
+
+    // a label was added to the first block
+    if(0 != instr_list_->prev) {
+        instr_list = instr_list_->prev;
+    }
 
     relink();
 }
@@ -217,9 +222,9 @@ basic_block *cfg::make_bb(
     unsigned num
 ) throw() {
 
-    // ensure that every basic block begins with a label; convenient
-    // normalization
-    if(0 == first || LABEL_OP != first->opcode) {
+    // ensure that every basic block begins with a label (except entry/exit);
+    // convenient normalization for things that do any kind of branching
+    if((0 == first || LABEL_OP != first->opcode) && 0 != last) {
         simple_instr *new_first(new_instr(LABEL_OP, 0));
         new_first->u.label.lab = new_label();
         instr::insert_before(new_first, first);

@@ -445,7 +445,7 @@ static bool find_temp_copies(basic_block *bb, cf_state &state) throw() {
 /// apply the constant folding optimization to a control flow graph. returns
 /// true if the graph was updated.
 void fold_constants(optimizer &opt, cfg &graph) throw() {
-    printf("// cf\n");
+    fprintf(stderr, "// cf\n");
 #ifndef ECE540_DISABLE_CF
     cf_state state;
     state.opt = &opt;

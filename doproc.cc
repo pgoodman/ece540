@@ -40,5 +40,6 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
 
     o.run(CP);
 
-    return print_dot(in_list, proc_name);
+    return o.first_instruction();
+    //return print_dot(o.first_instruction(), proc_name);
 }
