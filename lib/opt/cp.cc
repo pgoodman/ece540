@@ -128,7 +128,7 @@ static bool propagate_in_bb(basic_block *bb, cp_state &s) {
 }
 
 void propagate_copies(optimizer &o, cfg &flow, use_def_map &ud) throw() {
-    fprintf(stderr, "// cp\n");
+    //fprintf(stderr, "// cp\n");
 #ifndef ECE540_DISABLE_CP
     cp_state state;
     state.o = &o;
