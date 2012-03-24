@@ -1,0 +1,13 @@
+#! /bin/bash
+
+if [ $# != 1  ]; then
+   echo Useage:
+   echo $0 filename
+   echo
+   echo Returns the cost of a program for the purposes of evaluation
+   echo with ECE540s assignment 5.
+   exit
+fi
+
+sim-safe $1 2>&1 | grep sim_num_insn | sed -r -e 's/\s+/\t/g' | cut -f 2
+
