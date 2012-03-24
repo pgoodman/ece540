@@ -53,16 +53,16 @@ namespace std {
         bool operator()(const loop_bounds_type &a, const loop_bounds_type &b) const throw() {
 
             // a.head < b.head
-            if(basic_block_less(a.head, b.head)) {
+            if(a.head < b.head) {
                 return true;
 
             // b.head < a.head
-            } else if(basic_block_less(b.head, a.head)) {
+            } else if(b.head < a.head) {
                 return false;
 
             // a.head == b.head
             } else {
-                return basic_block_less(a.tail, b.tail);
+                return a.tail < b.tail;
             }
         }
     };
@@ -71,12 +71,10 @@ namespace std {
     struct less<loop *> : public binary_function<loop *, loop *, bool> {
     public:
         bool operator()(const loop *a, const loop *b) const throw() {
-            // a.head < b.head
-            if(basic_block_less(a->head, b->head)) {
+            if(a->head < b->head) {
                 return true;
 
-            // b.head < a.head
-            } else if(basic_block_less(b->head, a->head)) {
+            } else if(b->head < a->head) {
                 return false;
 
             // a.head == b.head

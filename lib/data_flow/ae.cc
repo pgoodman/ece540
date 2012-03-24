@@ -209,7 +209,6 @@ bool available_expression_map::find_expression(basic_block *bb, available_expres
 /// map all expressions to ids
 available_expression_map::available_expression_map(void) throw()
     : next_expression_id(0U)
-    , num_basic_blocks(0)
 { }
 
 /// apply a function to a copy of each unique expression in the available
@@ -233,8 +232,7 @@ available_expression available_expression_map::operator()(const simple_instr *in
 available_expression_set &
 available_expression_map::operator()(const basic_block *bb) throw() {
     assert(0 != bb);
-    assert(bb->id < expression_sets.size());
-    return expression_sets[bb->id];
+    return expression_sets[bb];
 }
 
 /// clear out all sets of available expressions for each basic block
@@ -243,7 +241,6 @@ void available_expression_map::clear(void) throw() {
     expressions.clear();
     expression_ids.clear();
     next_expression_id = 0;
-    num_basic_blocks = 0;
 }
 
 namespace {
@@ -409,10 +406,6 @@ void find_available_expressions(cfg &flow, available_expression_map &ae) throw()
     > compute_available_expressions(transfer);
 
     ae.clear();
-    available_expression_set empty_set;
-
-    ae.num_basic_blocks = flow.size();
-    ae.expression_sets.assign(ae.num_basic_blocks, empty_set);
     flow.for_each_basic_block(&available_expression_map::find_expression, ae);
 
     compute_available_expressions(flow, ae);

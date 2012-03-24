@@ -19,6 +19,7 @@
 #include "include/data_flow/var_def.h"
 #include "include/data_flow/var_use.h"
 #include "include/loop.h"
+#include "include/use_def.h"
 #include "include/unsafe_cast.h"
 
 
@@ -35,13 +36,17 @@ public:
 private:
 
     struct dirty_state {
-        bool cfg;
-        bool doms;
-        bool ae;
-        bool var_use;
-        bool var_def;
-        bool loops;
-    } dirty, prev_dirty;
+        unsigned padding_:25;
+        unsigned cfg:1;
+        unsigned doms:1;
+        unsigned ae:1;
+        unsigned var_use:1;
+        unsigned var_def:1;
+        unsigned ud:1;
+        unsigned loops:1;
+    } dirty;
+
+    bool changed_something;
 
     simple_instr                *instructions;
 
@@ -50,6 +55,7 @@ private:
     available_expression_map    available_expressions;
     var_def_map                 var_defs;
     var_use_map                 var_uses;
+    use_def_map                 ud_chain;
     loop_map                    loops;
 
     /// type tag; used only to distinguish among overloaded functions below
@@ -65,6 +71,7 @@ private:
     static var_def_map &get(optimizer &self, tag<var_def_map>) throw();
     static var_use_map &get(optimizer &self, tag<var_use_map>) throw();
     static loop_map &get(optimizer &self, tag<loop_map>) throw();
+    static use_def_map &get(optimizer &self, tag<use_def_map>) throw();
 
     /// optimization pass unwrappers, allow for easily storing optimization
     /// pass functions using the same type, but then manually figuring out and
@@ -77,7 +84,6 @@ private:
         typedef void (opt_func)(optimizer &, T0 &);
         opt_func *typed_callback(unsafe_cast<opt_func *>(callback));
         T0 &a0(get(self, tag<T0>()));
-        memcpy(&self.prev_dirty, &self.dirty, sizeof(dirty_state));
         typed_callback(self, a0);
     }
 
@@ -87,7 +93,6 @@ private:
         opt_func *typed_callback(unsafe_cast<opt_func *>(callback));
         T0 &a0(get(self, tag<T0>()));
         T1 &a1(get(self, tag<T1>()));
-        memcpy(&self.prev_dirty, &self.dirty, sizeof(dirty_state));
         typed_callback(self, a0, a1);
     }
 
@@ -98,7 +103,6 @@ private:
         T0 &a0(get(self, tag<T0>()));
         T1 &a1(get(self, tag<T1>()));
         T2 &a2(get(self, tag<T2>()));
-        memcpy(&self.prev_dirty, &self.dirty, sizeof(dirty_state));
         typed_callback(self, a0, a1, a2);
     }
 

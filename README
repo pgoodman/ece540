@@ -14,8 +14,17 @@ Notable/clever things:
     issues where I had multiple functions and the numbering for the basic blocks
     in the graph were the same.
     
+    I created a super nifty optimization framework (optimizer.h, optimizer.cc)
+    that manages dependency injection into optimization passes and manages
+    cascading relationships between independent optimization passes, allowing
+    for declarative specifications of which optimizations should be done when.
+    
+    I forced every basic block to begin with a label, including entry/exit. This
+    is convenient for a number of reasons.
+    
     Optimization                        Flag
     ------------                        ----
     Constant folding                    ECE540_DISABLE_CF
+    Copy propagation                    ECE540_DISABLE_CP
     
     

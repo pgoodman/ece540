@@ -171,7 +171,6 @@ cfg::cfg(simple_instr *instr_list_) throw()
     : entry_(0)
     , exit_(0)
     , last_allocated(0)
-    , next_block_id(0U)
     , instr_list(instr_list_)
 {
     entry_ = make_bb(0, 0, 0U);
@@ -209,7 +208,6 @@ cfg::~cfg(void) throw() {
     entry_ = 0;
     exit_ = 0;
     last_allocated = 0;
-    next_block_id = 0U;
 }
 
 /// make a basic block and automatically assign that block a unique id
@@ -218,12 +216,24 @@ basic_block *cfg::make_bb(
     simple_instr *last,
     unsigned num
 ) throw() {
-    basic_block *bb(new basic_block(
-        next_block_id++,
-        num,
-        first,
-        last
-    ));
+
+    // ensure that every basic block begins with a label; convenient
+    // normalization
+    if(0 == first || LABEL_OP != first->opcode) {
+        simple_instr *new_first(new_instr(LABEL_OP, 0));
+        new_first->u.label.lab = new_label();
+        instr::insert_before(new_first, first);
+
+        if(0 == first) {
+            assert(0 == last);
+            last = new_first;
+        }
+
+        first = new_first;
+        ++num;
+    }
+
+    basic_block *bb(new basic_block(num, first, last));
 
     if(0 != last_allocated) {
         last_allocated->next = bb;
@@ -234,13 +244,6 @@ basic_block *cfg::make_bb(
     bb->next = 0;
 
     return bb;
-}
-
-/// run through some bbs and increment their ids
-static void increment_bb_ids(basic_block *bb) throw() {
-    for(; 0 != bb; bb = bb->next) {
-        bb->id += 1U;
-    }
 }
 
 /// inject the basic block into the stream after prev and before next
@@ -297,22 +300,6 @@ basic_block *cfg::unsafe_insert_block(
     assert(0 != first);
     assert(0 != last);
 
-    unsigned id(0);
-
-    if(0 == prev) {
-        assert(0 != next);
-        assert(0 == next->prev);
-
-        id = next->id;
-    } else if(0 == next) {
-        assert(0 != prev);
-        assert(0 == prev->next);
-
-        id = prev->id + 1U;
-    } else {
-        id = next->id;
-    }
-
     // figure out how many instructions this bb has
     unsigned num_instrs(0U);
     simple_instr *last_(find_bb_end(first, num_instrs));
@@ -326,20 +313,27 @@ basic_block *cfg::unsafe_insert_block(
         return 0;
     }
 
-    ++next_block_id;
-    increment_bb_ids(next);
+    // ensure that every basic block begins with a label; convenient
+    // normalization
+    if(LABEL_OP != first->opcode) {
+        simple_instr *new_first(new_instr(LABEL_OP, 0));
+        new_first->u.label.lab = new_label();
+        instr::insert_before(new_first, first);
 
-    //basic_block *prev(next->prev);
-    basic_block *curr(new basic_block(id, num_instrs, first, last));
+        if(0 == first) {
+            assert(0 == last);
+            last = new_first;
+        }
+
+        first = new_first;
+        ++num_instrs;
+    }
+
+    basic_block *curr(new basic_block(num_instrs, first, last));
 
     unsafe_inject_bb(prev, curr, next);
 
     return curr;
-}
-
-/// return the number of basic blocks in the flow graph
-unsigned cfg::size(void) const throw() {
-    return next_block_id;
 }
 
 /// return an iterator to the first basic block

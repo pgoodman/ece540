@@ -21,33 +21,12 @@ extern "C" {
 class cfg;
 class basic_block;
 
-/// compare two basic blocks by their ids
-bool basic_block_less(const basic_block *, const basic_block *) throw();
-
-namespace std {
-
-    /// default comparison for basic blocks based on their ids, where their
-    /// ids are induced by the ordering of instructions in the procedure
-    template <>
-    struct less<basic_block *> : public binary_function <basic_block *, basic_block *, bool> {
-        bool operator()(const basic_block *x, const basic_block *y) const {
-            return basic_block_less(x, y);
-        }
-    };
-
-}
-
-
 /// represents a basic block of instructions
 class basic_block {
 public:
 
-    unsigned id;
-
     friend class cfg;
     template <typename> friend class linked_list_iterator;
-
-    friend bool basic_block_less(const basic_block *, const basic_block *) throw();
 
     unsigned num_instructions;
 
@@ -67,7 +46,7 @@ public:
 private:
 
     /// create a basic block
-    basic_block(unsigned, unsigned, simple_instr *, simple_instr *) throw();
+    basic_block(unsigned, simple_instr *, simple_instr *) throw();
 
 public:
 

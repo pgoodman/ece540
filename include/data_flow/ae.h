@@ -73,15 +73,12 @@ private:
 
     std::map<detail::available_expression_impl, unsigned> expression_ids;
     std::vector<available_expression> expressions;
-    std::vector<available_expression_set> expression_sets;
+    std::map<const basic_block *, available_expression_set> expression_sets;
 
     static bool find_expression(basic_block *, available_expression_map &self) throw();
     static bool find_expression(simple_instr *, available_expression_map &self) throw();
 
     unsigned next_expression_id;
-
-    // TODO: this could be sketchy later if cfg changes size
-    unsigned num_basic_blocks;
 
 public:
 

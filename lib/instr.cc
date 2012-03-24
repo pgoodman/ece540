@@ -95,31 +95,35 @@ namespace instr {
     /// insert an instruction into the stream before naother one
     void insert_before(simple_instr *to_insert, simple_instr *before) throw() {
         assert(0 != to_insert);
-        assert(0 != before);
 
         to_insert->next = before;
-        to_insert->prev = before->prev;
 
-        if(0 != before->prev) {
-            before->prev->next = to_insert;
+        if(0 != before) {
+            to_insert->prev = before->prev;
+
+            if(0 != before->prev) {
+                before->prev->next = to_insert;
+            }
+
+            before->prev = to_insert;
         }
-
-        before->prev = to_insert;
     }
 
     /// insert an instruction into the stream after another one
     void insert_after(simple_instr *to_insert, simple_instr *after) throw() {
         assert(0 != to_insert);
-        assert(0 != after);
 
-        to_insert->next = after->next;
         to_insert->prev = after;
 
-        if(0 != after->next) {
-            after->next->prev = to_insert;
-        }
+        if(0 != after) {
+            to_insert->next = after->next;
 
-        after->next = to_insert;
+            if(0 != after->next) {
+                after->next->prev = to_insert;
+            }
+
+            after->next = to_insert;
+        }
     }
 
     /// return true if execution of an instruction can fall through to the next

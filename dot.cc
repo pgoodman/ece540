@@ -10,6 +10,7 @@ extern "C" {
 #include "include/cfg.h"
 #include "include/basic_block.h"
 #include "include/diag.h"
+#include "include/unsafe_cast.h"
 
 #ifdef TRANSFORM
 #   define T(x) x
@@ -292,7 +293,10 @@ static unsigned cluster_id(0U);
 /// print out basic block information
 static bool print_basic_block(basic_block *bb) throw() {
 
-    printf("n%ud%u [label=<<FONT SIZE=\"0.1\" COLOR=\"white\">%u</FONT>%u | ", cluster_id, bb->id, cluster_id, bb->id);
+    printf("n%ud%lu [label=<<FONT SIZE=\"0.1\" COLOR=\"white\">%u</FONT>%lu | ",
+        cluster_id, unsafe_cast<unsigned long>(bb),
+        cluster_id, unsafe_cast<unsigned long>(bb)
+    );
 
     if(0 != bb->first) {
         for(simple_instr *in(bb->first); in != bb->last->next; in = in->next) {
@@ -310,7 +314,10 @@ static bool print_basic_block(basic_block *bb) throw() {
     const std::set<basic_block *>::const_iterator end(successors.end());
 
     for(; it != end; ++it) {
-        printf("n%ud%u -> n%ud%u;\n", cluster_id, bb->id, cluster_id, (*it)->id);
+        printf("n%ud%lu -> n%ud%lu;\n",
+            cluster_id, unsafe_cast<unsigned long>(bb),
+            cluster_id, unsafe_cast<unsigned long>(*it)
+        );
     }
 
     return true;

@@ -14,8 +14,10 @@ optimizer::optimizer(simple_instr *in) throw()
     : instructions(in)
     , flow_graph(in)
 {
-    memset(&dirty, 1, sizeof dirty);
+    memset(&dirty, ~0, sizeof dirty);
+
     dirty.cfg = false;
+    dirty.padding_ = 0;
 }
 
 /// internal getters based on type tags; these handle getting references to
@@ -61,6 +63,7 @@ var_def_map &optimizer::get(optimizer &self, tag<var_def_map>) throw() {
     if(self.dirty.var_def) {
         find_var_defs(self.flow_graph, self.var_defs);
         self.dirty.var_def = false;
+        self.dirty.ud = true;
     }
     return self.var_defs;
 }
@@ -83,9 +86,17 @@ loop_map &optimizer::get(optimizer &self, tag<loop_map>) throw() {
     return self.loops;
 }
 
+use_def_map &optimizer::get(optimizer &self, tag<use_def_map>) throw() {
+    get(self, tag<var_def_map>());
+    if(self.dirty.ud) {
+        find_defs_reaching_uses(self.flow_graph, self.var_defs, self.ud_chain);
+        self.dirty.ud = false;
+    }
+    return self.ud_chain;
+}
+
 /// dependency injector with no dependent arguments
 void optimizer::inject0(void (*callback)(optimizer &), optimizer &self) throw() {
-    memcpy(&self.prev_dirty, &self.dirty, sizeof(dirty_state));
     callback(self);
 }
 
@@ -103,16 +114,20 @@ optimizer::pass optimizer::add_pass(void (*func)(optimizer &)) throw() {
 
 void optimizer::changed_def(void) throw() {
     dirty.ae = true;
-    dirty.var_use = true;
+    dirty.var_def = true;
+    changed_something = true;
 }
 
 void optimizer::changed_use(void) throw() {
     dirty.ae = true;
+    dirty.ud = true;
     dirty.var_use = true;
+    changed_something = true;
 }
 
 void optimizer::changed_block(void) throw() {
     dirty.cfg = true;
+    changed_something = true;
 }
 
 /// add an unconditional cascading relation between two optimization passes
@@ -134,25 +149,26 @@ bool optimizer::run(pass &first) throw() {
     internal_pass thunk;
 
     bool ret(false);
+    int num_passes(0);
 
     while(!work_list.empty()) {
+
+        if(++num_passes > 10) {
+            break;
+        }
+
         pass curr(work_list.back());
         work_list.pop_back();
 
-        // note: prev_dirty is reset *just* before the optimization pass is
-        //       called so that we compare against the dirty struct after
-        //       dependencies have been re-resolved.
         thunk = passes[curr];
+        changed_something = false;
         thunk.unwrapper(thunk.untyped_func, *this);
 
         // compare the dirty and prev_dirty structs for differences
-        const int cascade_cond(0 == memcmp(&dirty, &prev_dirty, sizeof dirty));
-        if(0 != cascade_cond) {
-            ret = true;
-        }
+        ret = ret || changed_something;
 
         // cascade, based on if there were any changes or not
-        std::set<pass> &curr_cascade(cascades[cascade_cond][curr]);
+        std::set<pass> &curr_cascade(cascades[changed_something][curr]);
         work_list.insert(work_list.end(), curr_cascade.begin(), curr_cascade.end());
     }
 

@@ -24,6 +24,7 @@ extern "C" {
 
 #include <map>
 #include <cstring>
+#include <stdint.h>
 
 /// maintains a mapping of non-floating-point-type temporary registers
 /// whose values are loaded with constants
@@ -253,6 +254,7 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
             } else {
                 in->opcode = NOP_OP;
             }
+
             state.opt->changed_block();
             continue;
 
@@ -267,6 +269,41 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
                 in->u.bj.src = 0;
             } else {
                 in->opcode = NOP_OP;
+            }
+
+            state.opt->changed_block();
+            continue;
+
+        // multi-way branch
+        case MBR_OP:
+            if(!state.get_constant(in->u.bj.src, result)) {
+                continue;
+            }
+
+            // try not to lose precision when using unsigned/signed types as
+            // the source of the mbr
+            int64_t result64(0);
+            if(UNSIGNED_TYPE == in->u.bj.src->var->type->base) {
+                unsigned uresult(0);
+                memcpy(&uresult, &result, sizeof uresult);
+                result64 = uresult;
+            } else {
+                result64 = result;
+            }
+
+            result64 -= in->u.mbr.offset;
+
+            // outside the range of valid offsets, jump to default
+            if(result64 < 0 || in->u.mbr.ntargets < result64) {
+                simple_sym *default_target(in->u.mbr.deflab);
+                in->opcode = JMP_OP;
+                in->u.bj.target = default_target;
+
+            // jump to specific target at the offset
+            } else {
+                simple_sym *target(in->u.mbr.targets[result64]);
+                in->opcode = JMP_OP;
+                in->u.bj.target = target;
             }
 
             state.opt->changed_block();
@@ -344,15 +381,7 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
             in->u.base.src1 = ldest;
             in->u.base.src2 = 0;
 
-            // chain the new instruction in
-            lin->next = in;
-            lin->prev = in->prev;
-
-            if(0 != in->prev) {
-                in->prev->next = lin;
-            }
-
-            in->prev = lin;
+            instr::insert_before(lin, in);
 
             // make sure blocks are kept consistent
             if(bb->first == in) {
@@ -416,7 +445,7 @@ static bool find_temp_copies(basic_block *bb, cf_state &state) throw() {
 /// apply the constant folding optimization to a control flow graph. returns
 /// true if the graph was updated.
 void fold_constants(optimizer &opt, cfg &graph) throw() {
-
+    //printf("running cf\n");
 #ifndef ECE540_DISABLE_CF
     cf_state state;
     state.opt = &opt;

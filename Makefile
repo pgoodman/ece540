@@ -4,7 +4,7 @@ ASN2_OBJS = bin/instr.o bin/diag.o bin/basic_block.o bin/cfg.o \
             bin/data_flow/dom.o bin/data_flow/closure.o \
             bin/loop.o bin/data_flow/var_def.o bin/data_flow/var_use.o \
             bin/data_flow/ae.o bin/opt/cf.o bin/opt/cp.o bin/opt/dce.o \
-            bin/optimizer.o
+            bin/optimizer.o bin/use_def.o
 OBJS = $(ASN2_OBJS) doproc.o main.o
 GLOBALINCLDIRS = -I./
 CXXFLAGS += -Wno-variadic-macros

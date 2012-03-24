@@ -36,6 +36,7 @@ public:
 class var_use_set : public std::set<var_use> {
 public:
     void erase(simple_reg *) throw();
+    iterator find(simple_reg *) throw();
 };
 
 /// mapping of basic blocks to the variables they use

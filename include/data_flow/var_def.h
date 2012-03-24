@@ -20,16 +20,32 @@ extern "C" {
 class cfg;
 class basic_block;
 
+/// variable definition type
+struct var_def {
+public:
+    simple_reg *reg;
+    simple_instr *in;
+    basic_block *bb;
+
+    bool operator<(const var_def &) const throw();
+    bool operator==(const var_def &) const throw();
+};
+
 /// compare two simple instructions according to the addresses of their
 /// destination registers.
 struct compare_var_defs {
 public:
-    bool operator()(const simple_instr *a, const simple_instr *b) const throw();
+    bool operator()(const var_def &a, const var_def &b) const throw();
 };
 
 /// domain of the problem: each basic block outputs a variable definition
 /// set containing those definitions that reach the end of the basic block.
-typedef std::set<simple_instr *, compare_var_defs> var_def_set;
+class var_def_set : public std::set<var_def> {
+public:
+    void erase(simple_reg *) throw();
+    iterator find(simple_reg *) throw();
+    const_iterator find(simple_reg *) const throw();
+};
 
 /// mapping of basic blocks to their variable definition sets
 typedef partial_function<basic_block *, var_def_set> var_def_map;

@@ -24,9 +24,6 @@ private:
     basic_block *exit_;
     basic_block *last_allocated;
 
-    /// the next basic block id
-    unsigned next_block_id;
-
     simple_instr *instr_list;
 
     /// create a new basic block
@@ -40,9 +37,6 @@ public:
     cfg(simple_instr *) throw();
 
     ~cfg(void) throw();
-
-    /// number of basic blocks in this CFG
-    unsigned size(void) const throw();
 
     basic_block_iterator begin(void) throw();
     const basic_block_iterator end(void) const throw();

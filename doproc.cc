@@ -24,13 +24,21 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     CP = o.add_pass(propagate_copies);
     DCE = o.add_pass(eliminate_dead_code);
 
+    //    1
+    //  .---.   2      4
+    // -`-> CP --> CF --> DCE -->
+    //       ^-----'
+    //          3
     o.cascade(CP, CF);
-    o.cascade(CF, DCE);
+    o.cascade_if(CP, CP, true);
+    o.cascade_if(CF, CP, true);
+    o.cascade_if(CF, DCE, false);
+
+    // loop invariant code motion
+    // common subexpression elimination
+    // local value numbering
 
     o.run(CP);
-
-    // groups of optimizations
-    //optimizer::pass group_C1(o.add_pass(C1));
 
     return print_dot(in_list, proc_name);
 }

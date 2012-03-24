@@ -15,28 +15,82 @@
 #include "include/data_flow/var_def.h"
 #include "include/data_flow/problem.h"
 
-/// group definitions by register, tie-break using the register
-bool compare_var_defs::operator()(
-    const simple_instr *a,
-    const simple_instr *b
-) const throw() {
-    const simple_reg *ar(a->u.base.dst), *br(b->u.base.dst);
-    if(ar == br) {
-        return a < b;
+/// group definitions by register, tie-break using the instruct
+bool var_def::operator<(const var_def &that) const throw() {
+    if(reg == that.reg) {
+        return in < that.in;
     }
-    return ar < br;
+    return reg < that.reg;
 }
 
+/// compare two variable definitions for equivalence
+bool var_def::operator==(const var_def &that) const throw() {
+    return in == that.in && reg == that.reg;
+}
+
+/// erase all definitions that reach a point based on a register
+void var_def_set::erase(simple_reg *reg) throw() {
+
+    iterator first(find(reg));
+    iterator last(first);
+    for(iterator end(this->end()); last != end && last->reg == reg; ++last) {
+        // loop :D
+    }
+
+    this->std::set<var_def>::erase(first, last);
+}
+
+/// return an iterator that points to the first definition of a register, or to
+/// the end of the set if no such definitions exist
+var_def_set::iterator var_def_set::find(simple_reg *reg) throw() {
+    var_def def;
+    def.bb = 0;
+    def.in = 0;
+    def.reg = reg;
+    iterator pos(this->upper_bound(def));
+    if(pos->reg != reg) {
+        pos = this->end();
+    }
+    return pos;
+}
+
+var_def_set::const_iterator var_def_set::find(simple_reg *reg) const throw() {
+    var_def def;
+    def.bb = 0;
+    def.in = 0;
+    def.reg = reg;
+    const_iterator pos(this->upper_bound(def));
+    if(pos->reg != reg) {
+        pos = this->end();
+    }
+    return pos;
+}
+
+
 namespace {
+
+    struct def_state {
+        var_def_set *incoming_defs;
+        basic_block *bb;
+    };
 
     /// compute the incremental reaching definitions of a single instruction
     static bool update_reaching_defs(
         IN      simple_instr *in,
-        INOUT   var_def_set &incoming_defs
+        INOUT   def_state &state
     ) throw() {
-        if(instr::is_var_def(in)) {
-            incoming_defs.erase(in);
-            incoming_defs.insert(in);
+
+        simple_reg *reg(0);
+
+        if(for_each_var_def(in, reg)) {
+
+            var_def def;
+            def.in = in;
+            def.bb = state.bb;
+            def.reg = reg;
+
+            state.incoming_defs->erase(reg);
+            state.incoming_defs->insert(def);
         }
         return true;
     }
@@ -47,7 +101,10 @@ namespace {
         IN      basic_block *bb,
         INOUT   var_def_set &incoming_defs
     ) throw() {
-        return bb->for_each_instruction(&update_reaching_defs, incoming_defs);
+        def_state state;
+        state.bb = bb;
+        state.incoming_defs = &incoming_defs;
+        return bb->for_each_instruction(&update_reaching_defs, state);
     }
 
     /// initialize the problem with the local gen set of each basic block

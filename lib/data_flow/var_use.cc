@@ -30,19 +30,26 @@ bool var_use::operator==(const var_use &that) const throw() {
 
 /// delete all usages of a variable from a set by the register
 void var_use_set::erase(simple_reg *reg) throw() {
-    var_use use;
-    use.in = 0; // guaranteed to be a lower bound :D
-    use.reg = reg;
-    use.usage = &reg;
-
-    iterator first, last(this->upper_bound(use)), end(this->end());
-    for(first = last; last != end && last->reg == reg; ++last) {
+    iterator first(find(reg));
+    iterator last(first);
+    for(iterator end(this->end()); last != end && last->reg == reg; ++last) {
         // loop :D
     }
 
-    if(first->reg == reg) {
-        this->std::set<var_use>::erase(first, last);
+    this->std::set<var_use>::erase(first, last);
+}
+
+/// find the first use of a register in a var use set
+var_use_set::iterator var_use_set::find(simple_reg *reg) throw() {
+    var_use use;
+    use.in = 0; // guaranteed to be a lower bound :D
+    use.reg = reg;
+    use.usage = 0;
+    iterator pos(this->upper_bound(use));
+    if(pos->reg != reg) {
+        pos = this->end();
     }
+    return pos;
 }
 
 namespace {
