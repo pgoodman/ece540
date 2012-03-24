@@ -35,8 +35,11 @@ struct cf_state {
     /// map of non-temporary registers to the values they currently contain
     std::map<simple_reg *, int> peephole;
 
-    /// true iff any constant folding was applied
-    bool updated;
+    /// update the result for what was done to the cfg
+    optimizer *opt;
+
+    /// true iff we should keep looking for constants
+    bool keep_looking_for_constants;
 
     /// return true iff a constant is stored in the register. if the register
     /// contains a constant, assign the constant to the variable constant passed
@@ -233,14 +236,41 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
     for(; in != end; in = in->next) {
         state.peek(in);
 
-        if(!instr::is_expression(in)) {
-            continue;
-        }
-
         bool updated_locally(false);
         int result(0);
 
         switch(in->opcode) {
+
+        // branch true
+        case BTRUE_OP:
+            if(!state.get_constant(in->u.bj.src, result)) {
+                continue;
+            }
+
+            if(result) {
+                in->opcode = JMP_OP;
+                in->u.bj.src = 0;
+            } else {
+                in->opcode = NOP_OP;
+            }
+            state.opt->changed_control_flow();
+            continue;
+
+        // branch false
+        case BFALSE_OP:
+            if(!state.get_constant(in->u.bj.src, result)) {
+                continue;
+            }
+
+            if(!result) {
+                in->opcode = JMP_OP;
+                in->u.bj.src = 0;
+            } else {
+                in->opcode = NOP_OP;
+            }
+
+            state.opt->changed_control_flow();
+            continue;
 
         // type conversion, between signed and unsigned, no bits change
         case CVT_OP:
@@ -267,6 +297,10 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
 
         // any binary operator
         default:
+            if(!instr::is_expression(in)) {
+                continue;
+            }
+
             const int op(in->opcode - ADD_OP);
             if(fold_funcs[op](state, in->u.base.src1, in->u.base.src2, result)) {
                 updated_locally = true;
@@ -294,6 +328,8 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
         // add in a new instruction and update the instruction
         // to be a cpy
         } else {
+
+            state.opt->added_def();
 
             simple_instr *lin(new_instr(LDC_OP, dest->var->type));
             simple_reg *ldest(new_register(dest->var->type, TEMP_REG));
@@ -327,7 +363,7 @@ static bool fold_constants(basic_block *bb, cf_state &state) throw() {
             state.update(dest, result);
         }
 
-        state.updated = true;
+        state.opt->removed_use();
     }
 
     return true;
@@ -371,7 +407,7 @@ static bool find_temp_copies(basic_block *bb, cf_state &state) throw() {
         }
 
         state.constants[in->u.base.dst] = state.constants[in->u.base.src1];
-        state.updated = true;
+        state.keep_looking_for_constants = true;
     }
 
     return true;
@@ -379,24 +415,26 @@ static bool find_temp_copies(basic_block *bb, cf_state &state) throw() {
 
 /// apply the constant folding optimization to a control flow graph. returns
 /// true if the graph was updated.
-bool fold_constants(cfg &graph) throw() {
+void fold_constants(optimizer &opt, cfg &graph) throw() {
+
+#ifndef ECE540_DISABLE_CF
     cf_state state;
-    state.updated = false;
+    state.opt = &opt;
 
     graph.for_each_basic_block(find_constants, state);
 
     if(!state.constants.empty()) {
-        state.updated = true;
+        state.keep_looking_for_constants = true;
 
-        while(state.updated) {
-            state.updated = false;
+        while(state.keep_looking_for_constants) {
+            state.keep_looking_for_constants = false;
             graph.for_each_basic_block(find_temp_copies, state);
         }
 
         graph.for_each_basic_block(fold_constants, state);
     }
 
-    return state.updated;
+#endif
 }
 
 #endif /* project_CF_CC_ */

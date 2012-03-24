@@ -8,7 +8,7 @@
 
 #include "include/opt/cp.h"
 
-bool constant_propagate(cfg &) throw() {
-    return false;
+void propagate_copies(optimizer &, cfg &) throw() {
+
 }
 

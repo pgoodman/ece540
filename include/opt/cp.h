@@ -9,8 +9,10 @@
 #ifndef project_CP_H_
 #define project_CP_H_
 
+#include "include/optimizer.h"
+
 class cfg;
 
-bool constant_propagate(cfg &) throw();
+void propagate_copies(optimizer &, cfg &) throw();
 
 #endif /* project_CP_H_ */

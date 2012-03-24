@@ -1,0 +1,142 @@
+/*
+ * optimizer.cc
+ *
+ *  Created on: Mar 23, 2012
+ *      Author: petergoodman
+ *     Version: $Id$
+ */
+
+#include <cstring>
+
+#include "include/optimizer.h"
+
+optimizer::optimizer(simple_instr *in) throw()
+    : instructions(in)
+    , flow_graph(in)
+{
+    memset(&dirty, 1, sizeof dirty);
+    dirty.cfg = false;
+}
+
+/// internal getters based on type tags; these handle getting references to
+/// internal data structures and making sure that they are up to date.
+
+cfg &optimizer::get(optimizer &self, tag<cfg>) throw() {
+    if(self.dirty.cfg) {
+        self.flow_graph.~cfg();
+        new (&(self.flow_graph)) cfg(self.instructions);
+        self.dirty.cfg = false;
+
+        // propagate
+        self.dirty.doms = true;
+        self.dirty.ae = true;
+        self.dirty.var_use = true;
+        self.dirty.var_def = true;
+        self.dirty.loops = true;
+    }
+    return self.flow_graph;
+}
+
+dominator_map &optimizer::get(optimizer &self, tag<dominator_map>) throw() {
+    get(self, tag<cfg>());
+    if(self.dirty.doms) {
+        find_dominators(self.flow_graph, self.dominators);
+        self.dirty.doms = false;
+        self.dirty.loops = true;
+    }
+    return self.dominators;
+}
+
+available_expression_map &optimizer::get(optimizer &self, tag<available_expression_map>) throw() {
+    get(self, tag<cfg>());
+    if(self.dirty.ae) {
+        find_available_expressions(self.flow_graph, self.available_expressions);
+        self.dirty.ae = false;
+    }
+    return self.available_expressions;
+}
+
+var_def_map &optimizer::get(optimizer &self, tag<var_def_map>) throw() {
+    get(self, tag<cfg>());
+    if(self.dirty.var_def) {
+        find_var_defs(self.flow_graph, self.var_defs);
+        self.dirty.var_def = false;
+    }
+    return self.var_defs;
+}
+
+var_use_map &optimizer::get(optimizer &self, tag<var_use_map>) throw() {
+    get(self, tag<cfg>());
+    if(self.dirty.var_use) {
+        find_var_uses(self.flow_graph, self.var_uses);
+        self.dirty.var_use = false;
+    }
+    return self.var_uses;
+}
+
+loop_map &optimizer::get(optimizer &self, tag<loop_map>) throw() {
+    get(self, tag<dominator_map>());
+    if(self.dirty.loops) {
+        find_loops(self.flow_graph, self.dominators, self.loops);
+        self.dirty.loops = false;
+    }
+    return self.loops;
+}
+
+/// dependency injector with no dependent arguments
+void optimizer::inject0(void (*callback)(optimizer &), optimizer &self) throw() {
+    memcpy(&prev_dirty, &dirty, sizeof dirty);
+    callback(self);
+}
+
+/// add a pass with no dependent arguments
+optimizer::pass optimizer::add_pass(void (*func)(optimizer &)) throw() {
+    internal_pass p;
+    p.untyped_func = func;
+    p.unwrapper = &inject0;
+    pass pass_id(static_cast<unsigned>(passes.size()));
+    passes.push_back(p);
+    return pass_id;
+}
+
+/// add a cascading relationship between two optimization passes
+void optimizer::cascade_cond(pass &first, pass &second, bool first_succeeds) throw() {
+    if(first_succeeds) {
+        cascades[0][first].insert(second);
+    } else {
+        cascades[1][first].insert(second);
+    }
+}
+
+/// run the optimizer
+bool optimizer::run(pass &first) throw() {
+    std::vector<pass> work_list;
+    work_list.push_back(first);
+
+    internal_pass thunk;
+
+    bool ret(false);
+
+    while(!work_list.empty()) {
+        pass curr(work_list.back());
+        work_list.pop_back();
+
+        // note: prev_dirty is reset *just* before the optimization pass is
+        //       called so that we compare against the dirty struct after
+        //       dependencies have been re-resolved.
+        thunk = passes[curr];
+        thunk.unwrapper(thunk.untyped_func, *this);
+
+        // compare the dirty and prev_dirty structs for differences
+        const int cascade_cond(0 == memcmp(&dirty, &prev_dirty, sizeof dirty));
+        if(0 != cascade_cond) {
+            ret = true;
+        }
+
+        // cascade, based on if there were any changes or not
+        std::set<pass> &curr_cascade(cascades[cascade_cond][curr]);
+        work_list.insert(work_list.end(), curr_cascade.begin(), curr_cascade.end());
+    }
+
+    return ret;
+}

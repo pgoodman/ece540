@@ -4,14 +4,35 @@
 #   include "dot.cc"
 #undef MAIN
 
+#include "include/optimizer.h"
 #include "include/opt/cf.h"
+#include "include/opt/cp.h"
+#include "include/opt/dce.h"
 
-/// print out the basic blocks and immediate dominators for some
+static optimizer::pass CF, CP, DCE;
+
+static void C1(optimizer &o) throw() {
+
+}
+
+/// set up and run the optimizer
+///
+/// the optimizer is organized in terms of groups of single pass optimizations,
+/// where each group is treated as an optimization. The distinction exists to
+/// allow cycles among optimization groups but not optimizations.
 simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
 
-    cfg flow_graph(in_list);
+    optimizer o(in_list);
 
-    fold_constants(flow_graph);
+    CF = o.add_pass(fold_constants);
+    CP = o.add_pass(propagate_copies);
+    DCE = o.add_pass(eliminate_dead_code);
+
+    o.cascade(CP, CF);
+    o.cascade(CF, DCE);
+
+    // groups of optimizations
+    optimizer::pass group_C1(o.add_pass(C1));
 
     return print_dot(in_list, proc_name);
 }

@@ -9,10 +9,12 @@
 #ifndef project_CF_H_
 #define project_CF_H_
 
+#include "include/optimizer.h"
+
 class cfg;
 
 /// apply the constant folding optimization to a control flow graph. returns
 /// true if the graph was updated.
-bool fold_constants(cfg &) throw();
+void fold_constants(optimizer &, cfg &) throw();
 
 #endif /* project_CF_H_ */

@@ -63,9 +63,13 @@ public:
     void erase(const simple_reg *) throw();
 };
 
+void find_available_expressions(cfg &, available_expression_map &) throw();
+
 /// maps
 class available_expression_map {
 private:
+
+    friend void find_available_expressions(cfg &, available_expression_map &) throw();
 
     std::map<detail::available_expression_impl, unsigned> expression_ids;
     std::vector<available_expression> expressions;
@@ -81,7 +85,7 @@ private:
 
 public:
 
-    available_expression_map(cfg &) throw();
+    available_expression_map(void) throw();
 
     /// apply a function for each expression
     bool for_each_expression(bool (*callback)(available_expression)) throw();
@@ -105,9 +109,6 @@ public:
     /// clear out all sets of available expressions for each basic block
     void clear(void) throw();
 };
-
-void find_available_expressions(cfg &, available_expression_map &) throw();
-void find_local_available_expressions(cfg &, available_expression_map &) throw();
 
 
 #endif /* asn4_AE_H_ */

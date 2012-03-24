@@ -14,7 +14,8 @@ Notable/clever things:
     issues where I had multiple functions and the numbering for the basic blocks
     in the graph were the same.
     
-    I ended up implementing equivalence through operand re-ordering, but it
-    turns out that was not originally needed, so it was left commented out.
+    Optimization                        Flag
+    ------------                        ----
+    Constant folding                    ECE540_DISABLE_CF
     
     
