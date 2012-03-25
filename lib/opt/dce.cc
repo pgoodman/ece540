@@ -63,6 +63,8 @@ static void kill_nops(simple_instr *in, optimizer &o) throw() {
 
         // delete in
         o.changed_block();
+        in->next = 0;
+        in->prev = 0;
         //free_instr(in);
     }
 }
