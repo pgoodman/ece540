@@ -158,7 +158,7 @@ static void do_dce(
             // add to the set of blocks that we will need to check for control
             // dependencies
             } else {
-                std::set<basic_block *> preds(item.bb->predecessors());
+                const std::set<basic_block *> &preds(item.bb->predecessors());
                 control_dep.insert(preds.begin(), preds.end());
             }
 
@@ -174,22 +174,50 @@ static void do_dce(
 
         // find control dependent instructions; only change updated in this loop
         // as work_list is known to be empty before here
-        std::set<basic_block *>::iterator cit(control_dep.begin())
-                                        , cend(control_dep.end());
-        for(; cit != cend; ++cit) {
-            basic_block *bb(*cit);
+        std::set<basic_block *> all_control_dep;
+        std::set<basic_block *> next_control_dep;
+        for(bool updated_control_dep(true); updated_control_dep; ) {
+            updated_control_dep = false;
 
-            if(0 == bb->last) {
-                continue;
+            std::set<basic_block *>::iterator cit(control_dep.begin())
+                                            , cend(control_dep.end());
+
+            for(; cit != cend; ++cit) {
+                basic_block *bb(*cit);
+
+                // entry/exit block, or already found this block as being
+                // control dependeny
+                if(0 == bb->last || 0 != all_control_dep.count(bb)) {
+                    continue;
+                }
+
+                // track which basic blocks have been visited so we don't loop
+                // infinitely in the case of cyclic cascading control
+                // dependencies
+                all_control_dep.insert(bb);
+
+                switch(bb->last->opcode) {
+
+                    // direct control dependencies
+                    case MBR_OP: case BTRUE_OP: case BFALSE_OP: case JMP_OP: {
+                        updated = true;
+                        work_list.push_back(dce_work_item(bb, bb->last));
+                        break;
+                    }
+
+                    // handle cascading control dependencies through fall-throughs
+                    default: {
+                        updated_control_dep = true;
+                        const std::set<basic_block *> &preds(bb->predecessors());
+                        next_control_dep.insert(preds.begin(), preds.end());
+                        break;
+                    }
+                }
             }
 
-            switch(bb->last->opcode) {
-            case MBR_OP: case BTRUE_OP: case BFALSE_OP: case JMP_OP:
-                updated = true;
-                work_list.push_back(dce_work_item(bb, bb->last));
-            default:
-                break;
-            }
+            control_dep.swap(next_control_dep);
+            next_control_dep.clear();
+
         }
     }
 

@@ -8,8 +8,7 @@ typedef int MatrixNM[N][M];
 typedef int MatrixMN[M][N];
 typedef int MatrixNN[N][N];
 
-
-void main (void)
+int main (void)
 {
   int i,j,k;
   MatrixNM A;
@@ -36,5 +35,5 @@ void main (void)
     fprintf (f,"C[%d][%d] = %d\n", i, i, C[i][i]);
 
   fclose(f);
-  exit(0);
+  return 0;
 }
