@@ -140,7 +140,8 @@ static void do_dce(
     // initialize the work list
     flow.for_each_basic_block(&find_initial_essential_ins, work_list);
 
-    // initialize essential instructions with all labels
+    // initialize essential instructions with all labels; unused labels will
+    // be destroyed the next time the cfg is initialized
     flow.for_each_basic_block(&find_label_essential_ins, essential_ins);
 
     // identify and remove deadcode

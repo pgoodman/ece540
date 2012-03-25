@@ -24,15 +24,17 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     CP = o.add_pass(propagate_copies);
     DCE = o.add_pass(eliminate_dead_code);
 
-    //    1
-    //  .---.   2      4
-    // -`-> CP --> CF --> DCE -->
+    //                5
+    //    1 .--------<---------.
+    //  .---.   2      4       |
+    // -`-> CP --> CF --> DCE -'->
     //       ^-----'
     //          3
     o.cascade(CP, CF);
     o.cascade_if(CP, CP, true);
     o.cascade_if(CF, CP, true);
     o.cascade_if(CF, DCE, false);
+    o.cascade_if(DCE, CP, true);
 
     // loop invariant code motion
     // common subexpression elimination

@@ -30,6 +30,38 @@ static void find_labels(
     }
 }
 
+/// find all used labels
+static void remove_unused_labels(simple_instr *in_) throw() {
+    std::set<simple_sym *> used_labels;
+
+    // find all used labels
+    for(simple_instr *in(in_); 0 != in; in = in->next) {
+        switch(in->opcode) {
+        case BTRUE_OP:
+        case BFALSE_OP:
+        case JMP_OP:
+            used_labels.insert(in->u.bj.target);
+            break;
+
+        case MBR_OP:
+            used_labels.insert(in->u.mbr.deflab);
+            for(unsigned i(0); i < in->u.mbr.ntargets; ++i) {
+                used_labels.insert(in->u.mbr.targets[i]);
+            }
+        default:
+            break;
+        }
+    }
+
+    // remove unused labels
+    for(simple_instr *in(in_); 0 != in; in = in->next) {
+        if(LABEL_OP == in->opcode
+        && 0U == used_labels.count(in->u.label.lab)) {
+            in->opcode = NOP_OP;
+        }
+    }
+}
+
 /// find the end of a basic block, starting from the input instruction
 static simple_instr *find_bb_end(simple_instr *in, unsigned &num) throw() {
     simple_instr *prev(0);
@@ -181,6 +213,11 @@ cfg::cfg(simple_instr *instr_list_) throw()
         entry_->successors_.insert(exit_);
         exit_->predecessors_.insert(entry_);
         return;
+
+    // go remove all unused labels; this will allow us to more aggressively
+    // concatenate basic blocks after multiple optimization passes
+    } else {
+        remove_unused_labels(instr_list_);
     }
 
     // get all basic blocks
