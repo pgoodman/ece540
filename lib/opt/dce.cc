@@ -63,7 +63,7 @@ static void kill_nops(simple_instr *in, optimizer &o) throw() {
 
         // delete in
         o.changed_block();
-        free_instr(in);
+        //free_instr(in);
     }
 }
 
@@ -203,7 +203,7 @@ void eliminate_dead_code(optimizer &o, cfg &flow, use_def_map &ud) throw() {
     do_dce(o, flow, ud);
 
     // clean up all NOPs
-    //kill_nops(o.first_instruction(), o);
+    kill_nops(o.first_instruction(), o);
 
 #endif
 }
