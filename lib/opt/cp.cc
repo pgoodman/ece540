@@ -74,7 +74,7 @@ static void try_propagate_copy(
     simple_instr *in,
     cp_state &s
 ) throw() {
-    if(0 == reg || PSEUDO_REG != reg->kind) {
+    if(0 == reg) {
         return;
     }
 

@@ -49,9 +49,11 @@ static void kill_nops(simple_instr *in, optimizer &o) throw() {
     // assume first is not NOP so as not to screw up the optimizer's internal
     // state
     simple_instr *prev(in), *next(0);
-    for(in = in->next; 0 != in; prev = in, in = next) {
+    for(in = in->next; 0 != in; in = next) {
         next = in->next;
+
         if(NOP_OP != in->opcode) {
+            prev = in;
             continue;
         }
 
@@ -79,8 +81,11 @@ static bool find_initial_essential_ins(basic_block *bb, dce_work_list &wl) throw
     }
 
     for(simple_instr *in(bb->first); in != bb->last->next; in = in->next) {
-        if(RET_OP == in->opcode || CALL_OP == in->opcode) {
+        switch(in->opcode) {
+        case RET_OP: case CALL_OP: case STR_OP: case MCPY_OP:
             wl.push_back(dce_work_item(bb, in));
+        default:
+            break;
         }
     }
 
