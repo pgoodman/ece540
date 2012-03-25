@@ -13,7 +13,7 @@
 
 class cfg;
 
-void eliminate_dead_code(optimizer &, cfg &) throw();
-
+/// eliminate all dead and unreachable code
+void eliminate_dead_code(optimizer &, cfg &, use_def_map &) throw();
 
 #endif /* project_DCE_H_ */

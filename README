@@ -19,12 +19,12 @@ Notable/clever things:
     cascading relationships between independent optimization passes, allowing
     for declarative specifications of which optimizations should be done when.
     
-    I forced every basic block to begin with a label, including entry/exit. This
-    is convenient for a number of reasons.
+    I forced every basic block (except entry/exit) to begin with a label, 
+    including entry/exit. This is convenient for a number of reasons.
     
     Optimization                        Flag
     ------------                        ----
     Constant folding                    ECE540_DISABLE_CF
     Copy propagation                    ECE540_DISABLE_CP
-    
+    Deadcode elimination                ECE540_DISABLE_DCE
     
