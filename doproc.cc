@@ -10,7 +10,7 @@
 #include "include/opt/dce.h"
 #include "include/opt/cse.h"
 
-static optimizer::pass CF, CP, DCE, CSE;
+static optimizer::pass CF, CP, DCE, CSE, DCE2;
 
 /// set up and run the optimizer pipeline.
 simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
@@ -20,12 +20,13 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     CP = o.add_pass(propagate_copies);
     CF = o.add_pass(fold_constants);
     DCE = o.add_pass(eliminate_dead_code);
+    DCE2 = o.add_pass(eliminate_dead_code);
     CSE = o.add_pass(eliminate_common_sub_expressions);
 
     //               5           7
     //    1 .--------<---------.-<--.
     //  .-<-.   2      4       |    |
-    // -`-> CP ->- CF ->- DCE -'->- CSE ->-
+    // -`-> CP ->- CF ->- DCE -'->- CSE ->- DCE
     //       `--<--'             6       8
     //          3
 
@@ -36,6 +37,7 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     o.cascade_if(DCE, CP, true);    // 5
     o.cascade_if(DCE, CSE, false);  // 6
     o.cascade_if(CSE, CP, true);    // 7
+    o.cascade_if(CSE, DCE2, false); // 8
 
     // loop invariant code motion
     // common subexpression elimination

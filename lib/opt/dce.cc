@@ -6,6 +6,7 @@
  *     Version: $Id$
  */
 
+#include <cassert>
 #include <vector>
 
 #include "include/opt/dce.h"
@@ -41,32 +42,28 @@ static bool clear_unreachable_bbs(basic_block *bb, optimizer &o) throw() {
 /// kill all NOPs
 static void kill_nops(simple_instr *in, optimizer &o) throw() {
 
-    if(0 == in->next) {
-        return;
-    }
+    for(simple_instr *next(0); 0 != in; in = next) {
+        if(NOP_OP == in->opcode) {
 
-    // assume first is not NOP so as not to screw up the optimizer's internal
-    // state
-    simple_instr *prev(in), *next(0);
-    for(in = in->next; 0 != in; in = next) {
-        next = in->next;
+            // find the next non-NOP
+            for(next = in->next;
+                0 != next && NOP_OP == next->opcode;
+                next = next->next) {
+                // loop :-P
+            }
 
-        if(NOP_OP != in->opcode) {
-            prev = in;
-            continue;
+            // unlink, if possible
+            if(0 != in->prev) {
+                simple_instr *prev(in->prev);
+                prev->next = next;
+
+                if(0 != next) {
+                    next->prev = prev;
+                }
+            }
+        } else {
+            next = in->next;
         }
-
-        // unlink in
-        prev->next = next;
-        if(0 != next) {
-            next->prev = prev;
-        }
-
-        // delete in
-        o.removed_nop();
-        in->next = 0;
-        in->prev = 0;
-        //free_instr(in);
     }
 }
 
