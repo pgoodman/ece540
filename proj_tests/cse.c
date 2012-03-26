@@ -4,7 +4,7 @@
 
 double x[N];
 
-main()
+int main()
 {
   int i, a, b, c, d, e, f, g;
   double ctr = 0.0;
@@ -36,5 +36,5 @@ main()
   }
 
   fclose(file);
-  exit(0);
+  return 0;
 }

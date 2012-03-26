@@ -80,8 +80,6 @@ private:
     static bool find_expression(basic_block *, available_expression_map &self) throw();
     static bool find_expression(simple_instr *, available_expression_map &self, basic_block *&) throw();
 
-    unsigned next_expression_id;
-
 public:
 
     available_expression_map(void) throw();
@@ -91,7 +89,7 @@ public:
 
     template <typename T0>
     bool for_each_expression(bool (*callback)(available_expression, T0 &), T0 &a0) throw() {
-        for(unsigned i(0); i < next_expression_id; ++i) {
+        for(unsigned i(0); i < expressions.size(); ++i) {
             if(!callback(expressions[i], a0)) {
                 return false;
             }
@@ -104,6 +102,10 @@ public:
 
     /// get a set of available expressions by the basic block
     available_expression_set &operator()(const basic_block *) throw();
+
+    /// "inject" an instruction into the map and force it to be equivalent
+    /// to an existing expression
+    void unsafe_inject_expression(simple_instr *, const available_expression &) throw();
 
     /// clear out all sets of available expressions for each basic block
     void clear(void) throw();

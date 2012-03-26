@@ -7,6 +7,7 @@
  */
 
 #include <set>
+#include <cassert>
 
 extern "C" {
 #   include <simple.h>
@@ -89,7 +90,11 @@ static void replace_reg_use(
 
 /// replace all uses and the definition of a specific temporary register with a
 /// new pseudo register
-static void replace_temp_register(basic_block *bb, cse_reg_finder &f) throw() {
+static void replace_temp_register(
+    basic_block *bb,
+    cse_reg_finder &f,
+    available_expression_map &ae
+) throw() {
     simple_reg *repl(new_register(f.reg->var->type, PSEUDO_REG));
     f.repl = repl;
 
@@ -97,7 +102,9 @@ static void replace_temp_register(basic_block *bb, cse_reg_finder &f) throw() {
     for(simple_instr *in(bb->first), *end(bb->last->next);
         in != end;
         in = in->next) {
+        available_expression old_expr(ae(in));
         for_each_var_use(&replace_reg_use, in, f);
+        ae.unsafe_inject_expression(in, old_expr);
     }
 
     // replace at the def point
@@ -105,6 +112,31 @@ static void replace_temp_register(basic_block *bb, cse_reg_finder &f) throw() {
     f.reg = repl;
     f.repl = 0;
 }
+/*
+static const char *op(simple_instr *in) throw() {
+    switch(in->opcode) {
+    case ADD_OP: return "+";
+    case MUL_OP: return "*";
+    case SUB_OP: return "-";
+    case DIV_OP: return "/";
+    case REM_OP: return "rem";
+    case MOD_OP: return "mod";
+    case SLE_OP: return "<=";
+    case CVT_OP: return "cast";
+    case SL_OP: return "<";
+    default: return "?";
+    }
+}
+
+static const char *r(simple_reg *reg) throw() {
+    if(0 == reg) {
+        return "r?";
+    }
+    char *buffer(new char[20]);
+    sprintf(buffer, "%c%d", TEMP_REG == reg->kind ? 't' : 'r', reg->num);
+    return buffer;
+}
+*/
 
 /// find the common sub-expressions and eliminate them; again, very similar to
 /// the transfer function of available expressions
@@ -124,6 +156,21 @@ static bool replace_common_sub_expressions(
         next = in->next; // just in case
 
         if(instr::is_expression(in)) {
+
+            cse_reg_finder d_f; // defining reg for instruction
+            cse_reg_finder ae_f; // defining reg for available expression instruction
+            for_each_var_def(&find_dest_reg, in, d_f);
+
+            /*
+            fprintf(stderr, "\ndef %s = %s %s %s\n",
+                d_f.reg->var->name,
+                r(in->u.base.src1),
+                op(in),
+                r(in->u.base.src2)
+            );
+            fflush(stderr);
+            */
+
             // get the expression for this instruction, and force it to be a lower
             // bound w.r.t the available expression sets
             available_expression expr((*s.ae_exit)(in));
@@ -135,13 +182,6 @@ static bool replace_common_sub_expressions(
 
             // found a common sub-expression; eliminate it
             if(it != it_end && it->id == expr.id) {
-                cse_reg_finder d_f;
-                cse_reg_finder ae_f;
-
-                if(!for_each_var_def(&find_dest_reg, in, d_f)) {
-                    diag::warning("Found an expression instruction that doesn't define any variables (1).\n");
-                    goto kill_expression;
-                }
 
                 simple_reg *temp(new_register(d_f.reg->var->type, PSEUDO_REG));
 
@@ -149,15 +189,21 @@ static bool replace_common_sub_expressions(
                 // expression
                 for(; it != it_end && it->id == expr.id; ++it) {
                     simple_instr *copy(new_instr(CPY_OP, d_f.reg->var->type));
+                    for_each_var_def(&find_dest_reg, it->in, ae_f);
 
-                    if(!for_each_var_def(&find_dest_reg, it->in, ae_f)) {
-                        diag::warning("Found an expression instruction that doesn't define any variables (2).\n");
-                        goto kill_expression;
-                    }
+                    /*fprintf(stderr, "  avail %s = %s %s %s\n",
+                        r(it->in->u.base.dst),
+                        r(it->in->u.base.src1),
+                        op(it->in),
+                        r(it->in->u.base.src2)
+                    );
+                    fflush(stderr);*/
+
+                    assert(it->in->opcode == in->opcode);
 
                     // make sure not to over-use a temporary register
                     if(TEMP_REG == ae_f.reg->kind) {
-                        replace_temp_register(it->bb, ae_f);
+                        replace_temp_register(it->bb, ae_f, *(s.ae_exit));
                     }
 
                     // we've found at least one common sub-expression :D but it's
@@ -166,14 +212,23 @@ static bool replace_common_sub_expressions(
                     // temporary registers are local to their basic blocks, so we
                     // can easily replace it
                     if(TEMP_REG == d_f.reg->kind) {
-                        replace_temp_register(bb, d_f);
+                        replace_temp_register(bb, d_f, *(s.ae_exit));
                     }
+
+                    /*fprintf(stderr, "    trans %s = %s %s %s\n",
+                        r(it->in->u.base.dst),
+                        r(it->in->u.base.src1),
+                        op(it->in),
+                        r(it->in->u.base.src2)
+                    );*/
 
                     copy->u.base.dst = temp;
                     copy->u.base.src1 = ae_f.reg;
                     instr::insert_after(copy, it->in);
                     s.o->changed_def();
                 }
+
+                //fprintf(stderr, "  copying expression %u into %s\n", expr.id, r(d_f.reg));
 
                 // replace the op with a copy
                 s.o->changed_use();
@@ -183,7 +238,6 @@ static bool replace_common_sub_expressions(
 
             // didn't find a common sub-expression
             } else {
-            kill_expression:
                 expr.in = in;
                 ae.insert(expr);
             }
@@ -195,6 +249,10 @@ static bool replace_common_sub_expressions(
             ae.erase(reg);
         }
     }
+
+    // we might have changed what the available expressions are by fiddling
+    // with things; make sure to update the available expressions at exit
+    (*s.ae_exit)(bb) = ae;
 
     return true;
 }

@@ -80,7 +80,7 @@ namespace detail {
             op_right = in->u.base.src1;
             break;
 
-        // non-reorderable
+        // non-reorderable, e.g. modulo, remainder
         default:
             op_left = in->u.base.src1;
             op_right = in->u.base.src2;
@@ -198,7 +198,7 @@ bool available_expression_map::find_expression(
         if(0U == self.expression_ids.count(expr)) {
 
             unsigned &id(self.expression_ids[expr]);
-            id = (self.next_expression_id)++;
+            id = static_cast<unsigned>(self.expressions.size());
 
             available_expression ae(
                 id,
@@ -220,14 +220,12 @@ bool available_expression_map::find_expression(basic_block *bb, available_expres
 }
 
 /// map all expressions to ids
-available_expression_map::available_expression_map(void) throw()
-    : next_expression_id(0U)
-{ }
+available_expression_map::available_expression_map(void) throw() { }
 
 /// apply a function to a copy of each unique expression in the available
 /// expression map
 bool available_expression_map::for_each_expression(bool (*callback)(available_expression)) throw() {
-    for(unsigned i(0); i < next_expression_id; ++i) {
+    for(unsigned i(0U); i < expressions.size(); ++i) {
         if(!callback(expressions[i])) {
             return false;
         }
@@ -253,7 +251,16 @@ void available_expression_map::clear(void) throw() {
     expression_sets.clear();
     expressions.clear();
     expression_ids.clear();
-    next_expression_id = 0;
+}
+
+/// "inject" an instruction into the map and force it to be equivalent
+/// to an existing expression
+void available_expression_map::unsafe_inject_expression(
+    simple_instr *in,
+    const available_expression &equiv_expr
+) throw() {
+    detail::available_expression_impl expr(in);
+    expression_ids[expr] = equiv_expr.id;
 }
 
 /// re-implement intersection as an union of only those expressions sharing the
