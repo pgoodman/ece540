@@ -134,6 +134,14 @@ void optimizer::changed_block(void) throw() {
     changed_something = true;
 }
 
+/// signal that a NOP has been removed; this is a special case to prevent
+/// infinite loops between the CFG aggressively replacing unused labels with
+/// NOPs and the deadcode eliminator removing NOPs. This dirties the CFG data
+/// structure *without* reporting that we changed anything
+void optimizer::removed_nop(void) throw() {
+    dirty.cfg = true;
+}
+
 /// add an unconditional cascading relation between two optimization passes
 void optimizer::cascade(pass &first, pass &second) throw() {
     cascade_if(first, second, true);
@@ -153,16 +161,13 @@ bool optimizer::run(pass &first) throw() {
     internal_pass thunk;
 
     bool ret(false);
-    int num_passes(0);
 
     while(!work_list.empty()) {
 
-        if(++num_passes > 10) {
-            break;
-        }
-
         pass curr(work_list.back());
         work_list.pop_back();
+
+        //fprintf(stderr, "pass %u\n", curr);
 
         thunk = passes[curr];
         changed_something = false;

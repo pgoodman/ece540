@@ -9,8 +9,7 @@
 #ifndef project_CF_H_
 #define project_CF_H_
 
-#include "include/optimizer.h"
-
+class optimizer;
 class cfg;
 
 /// apply the constant folding optimization to a control flow graph. returns

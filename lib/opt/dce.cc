@@ -10,8 +10,7 @@
 
 #include "include/opt/dce.h"
 #include "include/cfg.h"
-#include "include/instr.h"
-#include "include/basic_block.h"
+#include "include/optimizer.h"
 
 /// a work item in our DCE work list
 struct dce_work_item {
@@ -64,7 +63,7 @@ static void kill_nops(simple_instr *in, optimizer &o) throw() {
         }
 
         // delete in
-        o.changed_block();
+        o.removed_nop();
         in->next = 0;
         in->prev = 0;
         //free_instr(in);
@@ -119,7 +118,8 @@ static bool clear_non_essential_ins(
     }
 
     for(simple_instr *in(bb->first); in != bb->last->next; in = in->next) {
-        if(0U == essential_ins.count(in)) {
+        if(NOP_OP != in->opcode
+        && 0U == essential_ins.count(in)) {
             in->opcode = NOP_OP;
         }
     }

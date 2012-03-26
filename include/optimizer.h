@@ -127,6 +127,7 @@ public:
     void changed_def(void) throw();
     void changed_use(void) throw();
     void changed_block(void) throw();
+    void removed_nop(void) throw();
 
     /// functions to add optimizations passes to the optimizer
 

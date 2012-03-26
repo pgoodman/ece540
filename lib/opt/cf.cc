@@ -16,6 +16,7 @@ extern "C" {
 #include "include/opt/cf.h"
 
 #include "include/cfg.h"
+#include "include/optimizer.h"
 #include "include/diag.h"
 #include "include/basic_block.h"
 #include "include/instr.h"

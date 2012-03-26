@@ -48,8 +48,9 @@ struct available_expression {
 public:
     unsigned id;
     simple_instr *in;
+    basic_block *bb;
 
-    available_expression(unsigned, simple_instr *) throw();
+    available_expression(unsigned, simple_instr *, basic_block *) throw();
 
     bool operator<(const available_expression &) const throw();
     bool operator==(const available_expression &) const throw();
@@ -63,6 +64,7 @@ public:
     void erase(const simple_reg *) throw();
 };
 
+available_expression_set available_expression_set_intersection(const available_expression_set &, const available_expression_set &) throw();
 void find_available_expressions(cfg &, available_expression_map &) throw();
 
 /// maps
@@ -76,7 +78,7 @@ private:
     std::map<const basic_block *, available_expression_set> expression_sets;
 
     static bool find_expression(basic_block *, available_expression_map &self) throw();
-    static bool find_expression(simple_instr *, available_expression_map &self) throw();
+    static bool find_expression(simple_instr *, available_expression_map &self, basic_block *&) throw();
 
     unsigned next_expression_id;
 

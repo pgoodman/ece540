@@ -63,8 +63,8 @@ public:
 
     /// apply a function to each instruction, where the instructions are visited
     /// in order.
-    template <typename T>
-    bool for_each_instruction(bool (*callback)(simple_instr *, T &), T &t) {
+    template <typename T0>
+    bool for_each_instruction(bool (*callback)(simple_instr *, T0 &), T0 &t0) {
         simple_instr *after_last(0);
         if(0 != last) {
             after_last = last->next;
@@ -73,7 +73,24 @@ public:
             0 != in && in != after_last;
             in = in->next) {
 
-            if(!callback(in, t)) {
+            if(!callback(in, t0)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    template <typename T0, typename T1>
+    bool for_each_instruction(bool (*callback)(simple_instr *, T0 &, T1 &), T0 &t0, T1 &t1) {
+        simple_instr *after_last(0);
+        if(0 != last) {
+            after_last = last->next;
+        }
+        for(simple_instr *in(first);
+            0 != in && in != after_last;
+            in = in->next) {
+
+            if(!callback(in, t0, t1)) {
                 return false;
             }
         }

@@ -8,33 +8,34 @@
 #include "include/opt/cf.h"
 #include "include/opt/cp.h"
 #include "include/opt/dce.h"
+#include "include/opt/cse.h"
 
-static optimizer::pass CF, CP, DCE;
+static optimizer::pass CF, CP, DCE, CSE;
 
-/// set up and run the optimizer
-///
-/// the optimizer is organized in terms of groups of single pass optimizations,
-/// where each group is treated as an optimization. The distinction exists to
-/// allow cycles among optimization groups but not optimizations.
+/// set up and run the optimizer pipeline.
 simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
 
     optimizer o(in_list);
 
-    CF = o.add_pass(fold_constants);
     CP = o.add_pass(propagate_copies);
+    CF = o.add_pass(fold_constants);
     DCE = o.add_pass(eliminate_dead_code);
+    CSE = o.add_pass(eliminate_common_sub_expressions);
 
-    //                5
-    //    1 .--------<---------.
-    //  .---.   2      4       |
-    // -`-> CP --> CF --> DCE -'->
-    //       ^-----'
+    //               5           7
+    //    1 .--------<---------.-<--.
+    //  .-<-.   2      4       |    |
+    // -`-> CP ->- CF ->- DCE -'->- CSE ->-
+    //       `--<--'             6       8
     //          3
-    o.cascade(CP, CF);
-    o.cascade_if(CP, CP, true);
-    o.cascade_if(CF, CP, true);
-    o.cascade_if(CF, DCE, false);
-    o.cascade_if(DCE, CP, true);
+
+    o.cascade_if(CP, CP, true);     // 1
+    o.cascade_if(CP, CF, false);    // 2
+    o.cascade_if(CF, CP, true);     // 3
+    o.cascade_if(CF, DCE, false);   // 4
+    o.cascade_if(DCE, CP, true);    // 5
+    o.cascade_if(DCE, CSE, false);  // 6
+    o.cascade_if(CSE, CP, true);    // 7
 
     // loop invariant code motion
     // common subexpression elimination
@@ -42,6 +43,6 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
 
     o.run(CP);
 
-    //return o.first_instruction();
-    return print_dot(o.first_instruction(), proc_name);
+    return o.first_instruction();
+    //return print_dot(o.first_instruction(), proc_name);
 }

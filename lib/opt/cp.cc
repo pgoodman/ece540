@@ -9,56 +9,10 @@
 #include <cassert>
 
 #include "include/opt/cp.h"
+#include "include/cfg.h"
+#include "include/optimizer.h"
+#include "include/use_def.h"
 #include "include/diag.h"
-
-#if 0
-/// represents a set of non-temporary variable definitions that are copies
-/// that reach the beginning of each basic block, where there is only one
-/// definition of each register.
-class reduced_var_def_set : var_def_set {
-public:
-    reduced_var_def_set(void) throw()
-        : var_def_set()
-    { }
-
-    /// build a reduced var def set from a var def set
-    reduced_var_def_set(const var_def_set &that) throw()
-        : var_def_set()
-    {
-        var_def_set::iterator it(that.begin()), it_end(that.end()), forward_it;
-        simple_reg *reg(0);
-        for(; it != it_end; ) {
-
-            reg = it->reg;
-            var_def def(*it);
-            bool skip(false);
-
-            // make sure there is o
-            for(++it; it != it_end; ++it) {
-                skip = true;
-                if(it->reg != def.reg) {
-                    break;
-                }
-            }
-
-            // not a copy, or there are multiple defs
-            if(skip || CPY_OP != def.in->opcode) {
-                continue;
-            }
-
-            // by this point: it's a copy op, there's only one of them
-            this->insert(def);
-        }
-    }
-
-    /// join two reduced var def sets; this doesn't necessarily result in a
-    /// larger set.
-    void join(const var_def_set &that) throw() {
-
-    }
-
-};
-#endif
 
 struct cp_state {
 public:

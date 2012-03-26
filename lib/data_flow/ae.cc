@@ -125,19 +125,27 @@ namespace detail {
 }
 
 /// initialize an available expression
-available_expression::available_expression(unsigned id_, simple_instr *in_) throw()
+available_expression::available_expression(unsigned id_, simple_instr *in_, basic_block *bb_) throw()
     : id(id_)
     , in(in_)
+    , bb(bb_)
 { }
 
-/// strict weak ordering for an available expression based on its id
+/// strict weak ordering for an available expression based on its id, where they
+/// are "sub" ordered in terms of instructions
 bool available_expression::operator<(const available_expression &that) const throw() {
-    return id < that.id;
+    if(id < that.id) {
+        return true;
+    } else if(id > that.id) {
+        return false;
+    } else {
+        return in < that.in;
+    }
 }
 
 /// equivalence of two available expressions
 bool available_expression::operator==(const available_expression &that) const throw() {
-    return id == that.id;
+    return id == that.id && in == that.in;
 }
 
 /// erase any expression in this set that uses a particular value
@@ -179,7 +187,11 @@ void available_expression_set::erase(const simple_reg *reg) throw() {
 
 /// go add in an expression to the expression map if it is not already in the
 /// expression map
-bool available_expression_map::find_expression(simple_instr *in, available_expression_map &self) throw() {
+bool available_expression_map::find_expression(
+    simple_instr *in,
+    available_expression_map &self,
+    basic_block *&bb
+) throw() {
     if(instr::is_expression(in)) {
         detail::available_expression_impl expr(in);
 
@@ -190,7 +202,8 @@ bool available_expression_map::find_expression(simple_instr *in, available_expre
 
             available_expression ae(
                 id,
-                in
+                in,
+                bb
             );
 
             self.expressions.push_back(ae);
@@ -202,7 +215,7 @@ bool available_expression_map::find_expression(simple_instr *in, available_expre
 
 /// go find all expressions in a basic block
 bool available_expression_map::find_expression(basic_block *bb, available_expression_map &self) throw() {
-    bb->for_each_instruction(find_expression, self);
+    bb->for_each_instruction(find_expression, self, bb);
     return true;
 }
 
@@ -243,6 +256,43 @@ void available_expression_map::clear(void) throw() {
     next_expression_id = 0;
 }
 
+/// re-implement intersection as an union of only those expressions sharing the
+/// same expression id
+available_expression_set available_expression_set_intersection(
+    const available_expression_set &a,
+    const available_expression_set &b
+) throw() {
+    typedef available_expression_set SetT;
+    SetT out;
+    SetT::iterator a_it(a.begin()), b_it(b.begin());
+    const SetT::iterator a_end(a.end()), b_end(b.end());
+    SetT::key_compare less_than(a.key_comp());
+
+    for(; a_it != a_end && b_it != b_end; ) {
+
+        // like normal intersection
+        if(less_than(*a_it, *b_it)) {
+            ++a_it;
+        } else if(less_than(*b_it, *a_it)) {
+            ++b_it;
+
+        // here's where it behaves like union
+        } else {
+            const unsigned id(a_it->id);
+
+            for(; a_it != a_end && id == a_it->id; ++a_it) {
+                out.insert(*a_it);
+            }
+
+            for(; b_it != b_end && id == b_it->id; ++b_it) {
+                out.insert(*b_it);
+            }
+        }
+    }
+
+    return out;
+}
+
 namespace {
 
     /// compute the set of evaluated expressions for a basic block; this
@@ -265,7 +315,7 @@ namespace {
 
             // add something new in
             if(instr::is_expression(in)) {
-                available_expression expr(all_expressions(in));
+                available_expression expr(all_expressions(in).id, in, bb);
                 bb_expressions.insert(expr);
             }
         }
@@ -331,7 +381,7 @@ namespace {
                 available_expression_set,
                 available_expression_set,
                 unary_operator<available_expression_set>::copy,
-                set_intersection
+                available_expression_set_intersection
             >(
                 incoming_expression_sets,
                 empty_set
