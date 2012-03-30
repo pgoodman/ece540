@@ -9,8 +9,9 @@
 #include "include/opt/cp.h"
 #include "include/opt/dce.h"
 #include "include/opt/cse.h"
+#include "include/opt/licm.h"
 
-static optimizer::pass CF, CP, DCE, CSE, DCE2;
+static optimizer::pass CF, CP, DCE, CSE, LICM;
 
 /// set up and run the optimizer pipeline.
 simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
@@ -20,13 +21,13 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     CP = o.add_pass(propagate_copies);
     CF = o.add_pass(fold_constants);
     DCE = o.add_pass(eliminate_dead_code);
-    DCE2 = o.add_pass(eliminate_dead_code);
     CSE = o.add_pass(eliminate_common_sub_expressions);
+    LICM = o.add_pass(hoist_loop_invariant_code);
 
     //               5           7
     //    1 .--------<---------.-<--.
     //  .-<-.   2      4       |    |
-    // -`-> CP ->- CF ->- DCE -'->- CSE ->- DCE
+    // -`-> CP ->- CF ->- DCE -'->- CSE ->- LICM
     //       `--<--'             6       8
     //          3
 
@@ -37,11 +38,7 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     o.cascade_if(DCE, CP, true);    // 5
     o.cascade_if(DCE, CSE, false);  // 6
     o.cascade_if(CSE, CP, true);    // 7
-    o.cascade_if(CSE, DCE2, false); // 8
-
-    // loop invariant code motion
-    // common subexpression elimination
-    // local value numbering
+    o.cascade_if(CSE, LICM, false); // 8
 
     o.run(CP);
 

@@ -211,7 +211,7 @@ static void update_jumps_to_head_label(
 /// add in a loop pre-header
 ///
 /// !!! this will patch the CFG, possibly in the following ways:
-///      - re-target som branches/jumps to the pre-header
+///      - re-target some branches/jumps to the pre-header
 static void add_pre_header(
     cfg &flow_graph,
     dominator_map &dominators,
@@ -336,7 +336,7 @@ void find_loops(
     flow_graph.relink();
     find_dominators(flow_graph, dominators);
 
-    lm.loops = new loop[lm.num_loops];
+    lm.loops_ = new loop[lm.num_loops];
     std::map<basic_block *, loop *> loops_by_head;
     unsigned curr_loop(0U);
 
@@ -365,7 +365,7 @@ void find_loops(
         if(loops_by_head.count(head)) {
             loop_info = loops_by_head[head];
         } else {
-            loop_info = &(lm.loops[curr_loop++]);
+            loop_info = &(lm.loops_[curr_loop++]);
         }
 
         assert(curr_loop <= lm.num_loops);
@@ -378,25 +378,19 @@ void find_loops(
     }
 
     assert(curr_loop == lm.num_loops);
-
-    // order the loops
-    for(curr_loop = 0; curr_loop < lm.num_loops; ++curr_loop) {
-        lm.ordered_loops.insert(&(lm.loops[curr_loop]));
-    }
 }
 
 void loop_map::clean_up(void) throw() {
     num_loops = 0;
-    ordered_loops.clear();
-    if(0 != loops) {
-        delete [] loops;
-        loops = 0;
+    if(0 != loops_) {
+        delete [] loops_;
+        loops_ = 0;
     }
 }
 
 loop_map::loop_map(void) throw()
     : num_loops(0U)
-    , loops(0)
+    , loops_(0)
 { }
 
 loop_map::~loop_map(void) throw() {
@@ -420,19 +414,3 @@ loop::~loop(void) throw() {
 unsigned loop_map::size(void) const throw() {
     return num_loops;
 }
-
-/// apply a callback to each loop
-bool loop_map::for_each_loop(
-    bool (*callback)(basic_block *, basic_block *, std::vector<basic_block *> &, std::set<basic_block *> &)
-) throw() {
-    std::set<loop *>::iterator loop_mapping(ordered_loops.begin());
-    for(; loop_mapping != ordered_loops.end(); ++loop_mapping) {
-        loop *loop_(*loop_mapping);
-
-        if(!callback(loop_->pre_header, loop_->head, loop_->tails, loop_->body)) {
-            return false;
-        }
-    }
-    return true;
-}
-

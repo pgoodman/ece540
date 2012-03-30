@@ -39,6 +39,22 @@ static bool clear_unreachable_bbs(basic_block *bb, optimizer &o) throw() {
     return true;
 }
 
+/// kill useless JMPs; after a few cycles through the pipeline, this might
+/// give us the opportunity to merge basic blocks. This is actually a form of
+/// peephole optimization
+static void kill_jmps(simple_instr *in, optimizer &o) throw() {
+    for(simple_instr *next(0); 0 != in; in = next) {
+        next = in->next;
+        if(0 != next
+        && JMP_OP == in->opcode
+        && LABEL_OP == next->opcode
+        && in->u.bj.target == next->u.label.lab) {
+            o.changed_block();
+            in->opcode = NOP_OP;
+        }
+    }
+}
+
 /// kill all NOPs
 static void kill_nops(simple_instr *in, optimizer &o) throw() {
 
@@ -235,7 +251,8 @@ void eliminate_dead_code(optimizer &o, cfg &flow, use_def_map &ud) throw() {
 
     do_dce(o, flow, ud);
 
-    // clean up all NOPs
+    // clean up useless things
+    kill_jmps(o.first_instruction(), o);
     kill_nops(o.first_instruction(), o);
 
 #endif

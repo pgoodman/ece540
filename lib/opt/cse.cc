@@ -112,31 +112,6 @@ static void replace_temp_register(
     f.reg = repl;
     f.repl = 0;
 }
-/*
-static const char *op(simple_instr *in) throw() {
-    switch(in->opcode) {
-    case ADD_OP: return "+";
-    case MUL_OP: return "*";
-    case SUB_OP: return "-";
-    case DIV_OP: return "/";
-    case REM_OP: return "rem";
-    case MOD_OP: return "mod";
-    case SLE_OP: return "<=";
-    case CVT_OP: return "cast";
-    case SL_OP: return "<";
-    default: return "?";
-    }
-}
-
-static const char *r(simple_reg *reg) throw() {
-    if(0 == reg) {
-        return "r?";
-    }
-    char *buffer(new char[20]);
-    sprintf(buffer, "%c%d", TEMP_REG == reg->kind ? 't' : 'r', reg->num);
-    return buffer;
-}
-*/
 
 /// find the common sub-expressions and eliminate them; again, very similar to
 /// the transfer function of available expressions
@@ -161,16 +136,6 @@ static bool replace_common_sub_expressions(
             cse_reg_finder ae_f; // defining reg for available expression instruction
             for_each_var_def(&find_dest_reg, in, d_f);
 
-            /*
-            fprintf(stderr, "\ndef %s = %s %s %s\n",
-                d_f.reg->var->name,
-                r(in->u.base.src1),
-                op(in),
-                r(in->u.base.src2)
-            );
-            fflush(stderr);
-            */
-
             // get the expression for this instruction, and force it to be a lower
             // bound w.r.t the available expression sets
             available_expression expr((*s.ae_exit)(in));
@@ -191,14 +156,6 @@ static bool replace_common_sub_expressions(
                     simple_instr *copy(new_instr(CPY_OP, d_f.reg->var->type));
                     for_each_var_def(&find_dest_reg, it->in, ae_f);
 
-                    /*fprintf(stderr, "  avail %s = %s %s %s\n",
-                        r(it->in->u.base.dst),
-                        r(it->in->u.base.src1),
-                        op(it->in),
-                        r(it->in->u.base.src2)
-                    );
-                    fflush(stderr);*/
-
                     assert(it->in->opcode == in->opcode);
 
                     // make sure not to over-use a temporary register
@@ -214,13 +171,6 @@ static bool replace_common_sub_expressions(
                     if(TEMP_REG == d_f.reg->kind) {
                         replace_temp_register(bb, d_f, *(s.ae_exit));
                     }
-
-                    /*fprintf(stderr, "    trans %s = %s %s %s\n",
-                        r(it->in->u.base.dst),
-                        r(it->in->u.base.src1),
-                        op(it->in),
-                        r(it->in->u.base.src2)
-                    );*/
 
                     copy->u.base.dst = temp;
                     copy->u.base.src1 = ae_f.reg;

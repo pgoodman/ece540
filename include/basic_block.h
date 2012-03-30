@@ -115,6 +115,9 @@ public:
         }
         return true;
     }
+
+    /// replace a temporary register with a non-temporary register
+    void replace_temp_reg(simple_reg *) throw();
 };
 
 /// iterator for basic blocks

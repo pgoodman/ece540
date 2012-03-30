@@ -93,8 +93,7 @@ class loop_map {
 private:
 
     unsigned num_loops;
-    loop *loops;
-    std::set<loop *> ordered_loops;
+    loop *loops_;
 
     friend void find_loops(cfg &, dominator_map &, loop_map &) throw();
 
@@ -107,7 +106,16 @@ public:
 
     unsigned size(void) const throw();
 
-    bool for_each_loop(bool (*callback)(basic_block *, basic_block *, std::vector<basic_block *> &, std::set<basic_block *> &)) throw();
+    template <typename T0>
+    bool for_each_loop(bool (*func)(loop &, T0 &), T0 &t0) throw() {
+        loop *it(loops_), *end(loops_ + num_loops);
+        for(; it != end; ++it) {
+            if(!func(*it, t0)) {
+                return false;
+            }
+        }
+        return true;
+    }
 };
 
 /// find alll loops; allows us to re-initiliaze a loop map.

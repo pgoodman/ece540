@@ -106,6 +106,17 @@ private:
         typed_callback(self, a0, a1, a2);
     }
 
+    template <typename T0, typename T1, typename T2, typename T3>
+    static void inject4(void (*callback)(optimizer &), optimizer &self) throw() {
+        typedef void (opt_func)(optimizer &, T0 &, T1 &, T2 &, T3 &);
+        opt_func *typed_callback(unsafe_cast<opt_func *>(callback));
+        T0 &a0(get(self, tag<T0>()));
+        T1 &a1(get(self, tag<T1>()));
+        T2 &a2(get(self, tag<T2>()));
+        T3 &a3(get(self, tag<T3>()));
+        typed_callback(self, a0, a1, a2, a3);
+    }
+
     /// represents all information needed to "recover" a type-erased optimization
     /// pass into the fully typed one with dependency injection automatically
     /// handled.
@@ -158,6 +169,16 @@ public:
         internal_pass p;
         p.untyped_func = unsafe_cast<untyped_optimization_func *>(func);
         p.unwrapper = &inject3<T0,T1,T2>;
+        pass pass_id(static_cast<unsigned>(passes.size()));
+        passes.push_back(p);
+        return pass_id;
+    }
+
+    template <typename T0, typename T1, typename T2, typename T3>
+    pass add_pass(void (*func)(optimizer &, T0 &, T1 &, T2 &, T3 &)) throw() {
+        internal_pass p;
+        p.untyped_func = unsafe_cast<untyped_optimization_func *>(func);
+        p.unwrapper = &inject4<T0,T1,T2,T3>;
         pass pass_id(static_cast<unsigned>(passes.size()));
         passes.push_back(p);
         return pass_id;
