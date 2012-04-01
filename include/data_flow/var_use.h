@@ -27,6 +27,7 @@ public:
     simple_reg *reg; // the variable being used
     simple_reg **usage; // the exact usage point in the instruction
     simple_instr *in; // the instruction in which the var is being used
+    basic_block *bb;
 
     bool operator<(const var_use &) const throw();
     bool operator==(const var_use &) const throw();

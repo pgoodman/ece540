@@ -21,10 +21,14 @@ extern "C" {
 #include "include/basic_block.h"
 #include "include/instr.h"
 #include "include/operator.h"
+
+#include "include/data_flow/var_use.h"
 #include "include/data_flow/var_def.h"
 
 #include <map>
+#include <vector>
 #include <cstring>
+#include <cassert>
 #include <stdint.h>
 
 /// maintains a mapping of non-floating-point-type temporary registers
@@ -443,6 +447,125 @@ static bool find_temp_copies(basic_block *bb, cf_state &state) throw() {
     return true;
 }
 
+namespace std {
+
+    /// define a strict weak ordering for immediate constants
+    template <>
+    struct less<simple_immed> {
+    public:
+        bool operator()(const simple_immed &a, const simple_immed &b) const throw() {
+            if(a.format < b.format) {
+                return true;
+            } else if(a.format > b.format) {
+                return false;
+            }
+
+            switch(a.format) {
+            case IMMED_INT:
+                return a.u.ival < b.u.ival;
+
+            case IMMED_FLOAT:
+                return a.u.fval < b.u.fval;
+
+            case IMMED_SYMBOL:
+                if(a.u.s.symbol < b.u.s.symbol) {
+                    return true;
+                } else if(a.u.s.symbol > b.u.s.symbol) {
+                    return false;
+                } else {
+                    return a.u.s.offset < b.u.s.offset;
+                }
+                return true;
+            }
+
+            return true;
+        }
+    };
+}
+
+/// remap a temporary register
+static void remap_temp_reg(
+    simple_reg *reg,
+    simple_reg **use,
+    simple_instr *,
+    std::map<simple_reg *, simple_reg *> &remapped_regs
+) throw() {
+    if(TEMP_REG == reg->kind) {
+        simple_reg *remapped_reg(remapped_regs[reg]);
+        if(0 != remapped_reg) {
+            *use = remapped_reg;
+        }
+    }
+}
+
+/// look for multiple LDC's of the same constant and combine them into a single
+/// LDC of that constant
+static bool combine_constants(basic_block *bb, optimizer &o) throw() {
+    if(0 == bb->last) {
+        return true;
+    }
+
+    typedef std::map<simple_immed, std::vector<simple_instr *> > constant_instr_map;
+    constant_instr_map constant_ins;
+
+    // go collect all constants in a basic block, mapping to the instructions
+    // that load them, in the order that the instructions appear
+    for(simple_instr *in(bb->first); in != bb->last->next; in = in->next) {
+        assert(0 != in);
+
+        if(LDC_OP == in->opcode) {
+            constant_ins[in->u.ldc.value].push_back(in);
+        }
+    }
+
+    constant_instr_map::iterator c_it(constant_ins.begin())
+                               , c_end(constant_ins.end());
+
+    for(; c_it != c_end; ++c_it) {
+        std::vector<simple_instr *> &instrs(c_it->second);
+
+        // only one use of this constant
+        if(1U == instrs.size()) {
+            continue;
+        }
+
+        o.changed_def();
+        o.changed_use();
+
+        simple_instr *first_ldc(instrs[0]);
+        simple_reg *new_loc(new_register(
+            first_ldc->u.ldc.dst->var->type,
+            PSEUDO_REG
+        ));
+
+        // copy the constant into a new register
+        simple_instr *cpy_instr(new_instr(CPY_OP, new_loc->var->type));
+        cpy_instr->u.base.src1 = first_ldc->u.ldc.dst;
+        cpy_instr->u.base.dst = new_loc;
+
+        // add the instruction in
+        instr::insert_after(cpy_instr, first_ldc);
+
+        // create a map of registers that need to be replaced, and kill the
+        // other LDCs
+        std::map<simple_reg *, simple_reg *> remapped_regs;
+        remapped_regs[first_ldc->u.ldc.dst] = new_loc;
+        for(unsigned i(1U); i < instrs.size(); ++i) {
+            remapped_regs[instrs[i]->u.ldc.dst] = new_loc;
+            instrs[i]->opcode = NOP_OP;
+        }
+
+        // replace all uses of the LDC registers with their equivalent remmaped
+        // ones
+        for(simple_instr *in(cpy_instr->next); in != bb->last->next; in = in->next) {
+            assert(0 != in);
+            for_each_var_use(remap_temp_reg, in, remapped_regs);
+        }
+    }
+
+    return true;
+}
+
 /// apply the constant folding optimization to a control flow graph. returns
 /// true if the graph was updated.
 void fold_constants(optimizer &opt, cfg &graph) throw() {
@@ -451,6 +574,7 @@ void fold_constants(optimizer &opt, cfg &graph) throw() {
     cf_state state;
     state.opt = &opt;
 
+    graph.for_each_basic_block(combine_constants, opt);
     graph.for_each_basic_block(find_constants, state);
 
     if(!state.constants.empty()) {

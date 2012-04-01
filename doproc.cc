@@ -27,8 +27,8 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     //               5           7
     //    1 .--------<---------.-<--.
     //  .-<-.   2      4       |    |
-    // -`-> CP ->- CF ->- DCE -'->- CSE ->- LICM
-    //       `--<--'             6       8
+    // -`-> CP ->- CF ->- DCE -'->- CSE ->- LICM ->- DCE
+    //       `--<--'             6       8       9
     //          3
 
     o.cascade_if(CP, CP, true);     // 1
@@ -39,6 +39,9 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     o.cascade_if(DCE, CSE, false);  // 6
     o.cascade_if(CSE, CP, true);    // 7
     o.cascade_if(CSE, LICM, false); // 8
+
+    DCE = o.add_pass(eliminate_dead_code);
+    o.cascade_if(LICM, DCE, true);
 
     o.run(CP);
 

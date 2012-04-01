@@ -20,6 +20,7 @@
 #include "include/data_flow/var_use.h"
 #include "include/loop.h"
 #include "include/use_def.h"
+#include "include/def_use.h"
 #include "include/unsafe_cast.h"
 
 
@@ -36,13 +37,14 @@ public:
 private:
 
     struct dirty_state {
-        unsigned padding_:25;
+        unsigned padding_:24;
         unsigned cfg:1;
         unsigned doms:1;
         unsigned ae:1;
         unsigned var_use:1;
         unsigned var_def:1;
         unsigned ud:1;
+        unsigned du:1;
         unsigned loops:1;
     } dirty;
 
@@ -56,6 +58,7 @@ private:
     var_def_map                 var_defs;
     var_use_map                 var_uses;
     use_def_map                 ud_chain;
+    def_use_map                 du_chain;
     loop_map                    loops;
 
     /// type tag; used only to distinguish among overloaded functions below
@@ -65,13 +68,14 @@ private:
     /// internal getters based on type tags; these handle getting references to
     /// internal data structures and making sure that they are up to date.
 
-    static cfg &get(optimizer &self, tag<cfg>) throw();
-    static dominator_map &get(optimizer &self, tag<dominator_map>) throw();
-    static available_expression_map &get(optimizer &self, tag<available_expression_map>) throw();
-    static var_def_map &get(optimizer &self, tag<var_def_map>) throw();
-    static var_use_map &get(optimizer &self, tag<var_use_map>) throw();
-    static loop_map &get(optimizer &self, tag<loop_map>) throw();
-    static use_def_map &get(optimizer &self, tag<use_def_map>) throw();
+    static cfg &get(optimizer &self, tag<cfg>, bool) throw();
+    static dominator_map &get(optimizer &self, tag<dominator_map>, bool) throw();
+    static available_expression_map &get(optimizer &self, tag<available_expression_map>, bool) throw();
+    static var_def_map &get(optimizer &self, tag<var_def_map>, bool) throw();
+    static var_use_map &get(optimizer &self, tag<var_use_map>, bool) throw();
+    static loop_map &get(optimizer &self, tag<loop_map>, bool) throw();
+    static use_def_map &get(optimizer &self, tag<use_def_map>, bool) throw();
+    static def_use_map &get(optimizer &self, tag<def_use_map>, bool) throw();
 
     /// optimization pass unwrappers, allow for easily storing optimization
     /// pass functions using the same type, but then manually figuring out and
@@ -83,7 +87,7 @@ private:
     static void inject1(void (*callback)(optimizer &), optimizer &self) throw() {
         typedef void (opt_func)(optimizer &, T0 &);
         opt_func *typed_callback(unsafe_cast<opt_func *>(callback));
-        T0 &a0(get(self, tag<T0>()));
+        T0 &a0(get(self, tag<T0>(), false));
         typed_callback(self, a0);
     }
 
@@ -91,8 +95,8 @@ private:
     static void inject2(void (*callback)(optimizer &), optimizer &self) throw() {
         typedef void (opt_func)(optimizer &, T0 &, T1 &);
         opt_func *typed_callback(unsafe_cast<opt_func *>(callback));
-        T0 &a0(get(self, tag<T0>()));
-        T1 &a1(get(self, tag<T1>()));
+        T0 &a0(get(self, tag<T0>(), false));
+        T1 &a1(get(self, tag<T1>(), false));
         typed_callback(self, a0, a1);
     }
 
@@ -100,9 +104,9 @@ private:
     static void inject3(void (*callback)(optimizer &), optimizer &self) throw() {
         typedef void (opt_func)(optimizer &, T0 &, T1 &, T2 &);
         opt_func *typed_callback(unsafe_cast<opt_func *>(callback));
-        T0 &a0(get(self, tag<T0>()));
-        T1 &a1(get(self, tag<T1>()));
-        T2 &a2(get(self, tag<T2>()));
+        T0 &a0(get(self, tag<T0>(), false));
+        T1 &a1(get(self, tag<T1>(), false));
+        T2 &a2(get(self, tag<T2>(), false));
         typed_callback(self, a0, a1, a2);
     }
 
@@ -110,10 +114,10 @@ private:
     static void inject4(void (*callback)(optimizer &), optimizer &self) throw() {
         typedef void (opt_func)(optimizer &, T0 &, T1 &, T2 &, T3 &);
         opt_func *typed_callback(unsafe_cast<opt_func *>(callback));
-        T0 &a0(get(self, tag<T0>()));
-        T1 &a1(get(self, tag<T1>()));
-        T2 &a2(get(self, tag<T2>()));
-        T3 &a3(get(self, tag<T3>()));
+        T0 &a0(get(self, tag<T0>(), false));
+        T1 &a1(get(self, tag<T1>(), false));
+        T2 &a2(get(self, tag<T2>(), false));
+        T3 &a3(get(self, tag<T3>(), false));
         typed_callback(self, a0, a1, a2, a3);
     }
 
@@ -195,6 +199,12 @@ public:
     /// run an optimization pass, and recursive cascade; returns true iff
     /// anything was done
     bool run(pass &) throw();
+
+    /// forcefully get something
+    template <typename T>
+    T &force_get(void) throw() {
+        return get(*this, tag<T>(), true);
+    }
 
     /// return the first instruction of the program
     simple_instr *first_instruction(void) throw();

@@ -11,6 +11,7 @@
 #include "include/basic_block.h"
 
 struct ud_state {
+public:
     std::map<simple_instr *, var_def_set> *ud;
     var_def_map *defs;
     basic_block *bb;
@@ -70,7 +71,7 @@ static bool find_defs_in_bb(basic_block *bb, ud_state &s) throw() {
     const std::set<basic_block *> &preds(bb->predecessors());
     std::set<basic_block *>::const_iterator it(preds.begin()), it_end(preds.end());
     for(; it != it_end; ++it) {
-        const var_def_set &pred_defs((*(s.defs))[*it]);
+        const var_def_set &pred_defs((*(s.defs))(*it));
         reaching_defs.insert(pred_defs.begin(), pred_defs.end());
     }
 

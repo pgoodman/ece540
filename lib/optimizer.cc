@@ -27,8 +27,8 @@ optimizer::optimizer(simple_instr *in) throw()
 /// internal getters based on type tags; these handle getting references to
 /// internal data structures and making sure that they are up to date.
 
-cfg &optimizer::get(optimizer &self, tag<cfg>) throw() {
-    if(self.dirty.cfg) {
+cfg &optimizer::get(optimizer &self, tag<cfg>, bool is_forced) throw() {
+    if(self.dirty.cfg || is_forced) {
         self.flow_graph.~cfg();
         new (&(self.flow_graph)) cfg(self.instructions);
         self.dirty.cfg = false;
@@ -43,9 +43,9 @@ cfg &optimizer::get(optimizer &self, tag<cfg>) throw() {
     return self.flow_graph;
 }
 
-dominator_map &optimizer::get(optimizer &self, tag<dominator_map>) throw() {
-    get(self, tag<cfg>());
-    if(self.dirty.doms) {
+dominator_map &optimizer::get(optimizer &self, tag<dominator_map>, bool is_forced) throw() {
+    get(self, tag<cfg>(), false);
+    if(self.dirty.doms || is_forced) {
         find_dominators(self.flow_graph, self.dominators);
         self.dirty.doms = false;
         self.dirty.loops = true;
@@ -53,50 +53,62 @@ dominator_map &optimizer::get(optimizer &self, tag<dominator_map>) throw() {
     return self.dominators;
 }
 
-available_expression_map &optimizer::get(optimizer &self, tag<available_expression_map>) throw() {
-    get(self, tag<cfg>());
-    if(self.dirty.ae) {
+available_expression_map &optimizer::get(optimizer &self, tag<available_expression_map>, bool is_forced) throw() {
+    get(self, tag<cfg>(), false);
+    if(self.dirty.ae || is_forced) {
         find_available_expressions(self.flow_graph, self.available_expressions);
         self.dirty.ae = false;
     }
     return self.available_expressions;
 }
 
-var_def_map &optimizer::get(optimizer &self, tag<var_def_map>) throw() {
-    get(self, tag<cfg>());
-    if(self.dirty.var_def) {
+var_def_map &optimizer::get(optimizer &self, tag<var_def_map>, bool is_forced) throw() {
+    get(self, tag<cfg>(), false);
+    if(self.dirty.var_def || is_forced) {
         find_var_defs(self.flow_graph, self.var_defs);
         self.dirty.var_def = false;
+        self.dirty.du = true;
         self.dirty.ud = true;
     }
     return self.var_defs;
 }
 
-var_use_map &optimizer::get(optimizer &self, tag<var_use_map>) throw() {
-    get(self, tag<cfg>());
-    if(self.dirty.var_use) {
+var_use_map &optimizer::get(optimizer &self, tag<var_use_map>, bool is_forced) throw() {
+    get(self, tag<cfg>(), false);
+    if(self.dirty.var_use || is_forced) {
         find_var_uses(self.flow_graph, self.var_uses);
         self.dirty.var_use = false;
+        self.dirty.du = true;
+        self.dirty.ud = true;
     }
     return self.var_uses;
 }
 
-loop_map &optimizer::get(optimizer &self, tag<loop_map>) throw() {
-    get(self, tag<dominator_map>());
-    if(self.dirty.loops) {
+loop_map &optimizer::get(optimizer &self, tag<loop_map>, bool is_forced) throw() {
+    get(self, tag<dominator_map>(), false);
+    if(self.dirty.loops || is_forced) {
         find_loops(self.flow_graph, self.dominators, self.loops);
         self.dirty.loops = false;
     }
     return self.loops;
 }
 
-use_def_map &optimizer::get(optimizer &self, tag<use_def_map>) throw() {
-    get(self, tag<var_def_map>());
-    if(self.dirty.ud) {
+use_def_map &optimizer::get(optimizer &self, tag<use_def_map>, bool is_forced) throw() {
+    get(self, tag<var_def_map>(), false);
+    if(self.dirty.ud || is_forced) {
         find_defs_reaching_uses(self.flow_graph, self.var_defs, self.ud_chain);
         self.dirty.ud = false;
     }
     return self.ud_chain;
+}
+
+def_use_map &optimizer::get(optimizer &self, tag<def_use_map>, bool is_forced) throw() {
+    get(self, tag<var_use_map>(), false);
+    if(self.dirty.du || is_forced) {
+        find_uses_reaching_defs(self.flow_graph, self.var_uses, self.du_chain);
+        self.dirty.du = false;
+    }
+    return self.du_chain;
 }
 
 /// dependency injector with no dependent arguments

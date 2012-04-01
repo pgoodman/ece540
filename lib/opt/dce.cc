@@ -95,6 +95,7 @@ static bool find_initial_essential_ins(basic_block *bb, dce_work_list &wl) throw
     for(simple_instr *in(bb->first); in != bb->last->next; in = in->next) {
         switch(in->opcode) {
         case RET_OP: case CALL_OP: case STR_OP: case MCPY_OP:
+        case LOAD_OP:
             wl.push_back(dce_work_item(bb, in));
         default:
             break;

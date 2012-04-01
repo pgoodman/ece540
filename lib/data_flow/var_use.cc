@@ -54,18 +54,25 @@ var_use_set::iterator var_use_set::find(simple_reg *reg) throw() {
 
 namespace {
 
+    struct vu_state {
+    public:
+        var_use_set *uses;
+        basic_block *bb;
+    };
+
     /// add a variable use to the uses set
     static void add_var_use(
         simple_reg *reg,
         simple_reg **reg_loc,
         simple_instr *in,
-        var_use_set &uses
+        vu_state &s
     ) throw() {
         var_use use;
         use.reg = reg;
         use.usage = reg_loc;
         use.in = in;
-        uses.insert(use);
+        use.bb = s.bb;
+        s.uses->insert(use);
     }
 
     /// remove a variable use from the use set because of a variable definition
@@ -73,18 +80,18 @@ namespace {
         simple_reg *reg,
         simple_reg **,
         simple_instr *,
-        var_use_set &uses
+        vu_state &s
     ) throw() {
-        uses.erase(reg);
+        s.uses->erase(reg);
     }
 
     /// compute the incremental used variables at this point
     static bool update_used_vars(
         IN      simple_instr *in,
-        INOUT   var_use_set &incoming_uses
+        INOUT   vu_state &s
     ) throw() {
-        for_each_var_def(remove_var_use, in, incoming_uses);
-        for_each_var_use(add_var_use, in, incoming_uses);
+        for_each_var_def(remove_var_use, in, s);
+        for_each_var_use(add_var_use, in, s);
         return true;
     }
 
@@ -94,7 +101,10 @@ namespace {
         IN      basic_block *bb,
         INOUT   var_use_set &incoming_uses
     ) throw() {
-        return bb->for_each_instruction_reverse(&update_used_vars, incoming_uses);
+        vu_state s;
+        s.uses = &incoming_uses;
+        s.bb = bb;
+        return bb->for_each_instruction_reverse(&update_used_vars, s);
     }
 
     /// initialize the problem with the local gen set of each basic block

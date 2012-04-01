@@ -42,6 +42,10 @@ public:
 /// set containing those definitions that reach the end of the basic block.
 class var_def_set : public std::set<var_def> {
 public:
+
+    typedef std::set<var_def>::iterator iterator;
+    typedef std::set<var_def>::const_iterator const_iterator;
+
     void erase(simple_reg *) throw();
     iterator find(simple_reg *) throw();
     const_iterator find(simple_reg *) const throw();
