@@ -216,12 +216,12 @@ static void check_used_var_invariant(
         it.instruction_is_invariant = false;
     }
 }
-
+/*
 static const char *r(simple_reg *reg) throw() {
     char *str(new char[10]);
     sprintf(str, "%c%d", reg->kind == PSEUDO_REG ? 'r' : 't', reg->num);
     return str;
-}
+}*/
 
 static void find_invariant_ins(basic_block *bb, invariant_tracker &it) throw() {
     if(0 == bb->last) {
@@ -251,7 +251,7 @@ static void find_invariant_ins(basic_block *bb, invariant_tracker &it) throw() {
             // it's defined multiple times in the loop; ignore
             const unsigned num_defs((*(it.num_defs))[defd_var]);
             if(1U < num_defs) {
-                printf("/* %s defined %u times */\n", r(defd_var), num_defs);
+                //printf("/* %s defined %u times */\n", r(defd_var), num_defs);
                 continue;
             }
 
@@ -259,7 +259,7 @@ static void find_invariant_ins(basic_block *bb, invariant_tracker &it) throw() {
             // elsewhere that could potentially affect this
             if(LOAD_OP == in->opcode) {
                 /*|| (LDC_OP == in->opcode && IMMED_SYMBOL == in->u.ldc.value.format)*/
-                printf("/* %s is a non-constant load */\n", r(defd_var));
+                //printf("/* %s is a non-constant load */\n", r(defd_var));
                 continue;
             }
 
@@ -270,12 +270,12 @@ static void find_invariant_ins(basic_block *bb, invariant_tracker &it) throw() {
 
                 // not all used vars are invariant
                 if(!it.instruction_is_invariant) {
-                    printf("/* %s uses vars that aren't (yet) invariant */\n", r(defd_var));
+                    //printf("/* %s uses vars that aren't (yet) invariant */\n", r(defd_var));
                     continue;
                 }
             }
 
-            printf("/* %s defines an invariant var */\n", r(defd_var));
+            //printf("/* %s defines an invariant var */\n", r(defd_var));
 
             // note: later on we will check that the definition dominates all
             //       its uses and dominates all exits
@@ -514,7 +514,7 @@ void copy_instructions_to_preheader(
     it.ordered_iins = &ordered_iins;
 
     order_iins_dfs(it, seen, loop_body, pre_header);
-    printf("/* e: num ordered iins = %lu */\n", ordered_iins.size());
+    //printf("/* e: num ordered iins = %lu */\n", ordered_iins.size());
     assert(ordered_iins.size() == num_iins);
 
     // do an in-order copy; only need to modify temp vars
@@ -595,23 +595,23 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
                                              , zd_end(num_defs.end());
     for(; zd_it != zd_end; ++zd_it) {
         if(0U == zd_it->second) {
-            printf("/* %s is invariant on entering */\n", r(zd_it->first));
+            //printf("/* %s is invariant on entering */\n", r(zd_it->first));
             invariant_regs.insert(zd_it->first);
         }
     }
 
     // loop until we can't find any new invariant instructions or registers
     do {
-        printf("/*round*/\n");
+        //printf("/*round*/\n");
         old_num_ins = invariant_ins.size();
         old_num_regs = invariant_regs.size();
         for_each_basic_block(loop, find_invariant_ins, it);
     } while(old_num_ins < invariant_ins.size()
          || old_num_regs < invariant_regs.size());
 
-    printf("\n");
+    //printf("\n");
 
-    printf("/* a: num iins = %lu */\n", invariant_ins.size());
+    //printf("/* a: num iins = %lu */\n", invariant_ins.size());
     if(invariant_ins.empty()) {
         return false;
     }
@@ -623,7 +623,7 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
     for_each_basic_block(loop, find_dominating_block, it);
     keep_dominating_ins(it);
 
-    printf("/* b: num iins = %lu */\n", invariant_ins.size());
+    //printf("/* b: num iins = %lu */\n", invariant_ins.size());
     if(invariant_ins.empty()) {
         return false;
     }
@@ -632,7 +632,7 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
     // the loop
     keep_dominating_defs(it, dum, dm, loop.body);
 
-    printf("/* c: num iins = %lu */\n", invariant_ins.size());
+    //printf("/* c: num iins = %lu */\n", invariant_ins.size());
     if(invariant_ins.empty()) {
         return false;
     }
@@ -641,7 +641,7 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
     // as invariant
     remove_disproved_invariant_ins(it);
 
-    printf("/* d: num iins = %lu */\n", invariant_ins.size());
+    //printf("/* d: num iins = %lu */\n", invariant_ins.size());
     if(invariant_ins.empty()) {
         return false;
     }
@@ -706,13 +706,13 @@ void hoist_loop_invariant_code(optimizer &o, loop_map &lm) throw() {
 
     for(unsigned i(0U); i < loops.size(); ++i) {
         loop *ll(loops[i]);
-        printf("/* loop w/ preheader(%s) and head(%s) has size %lu */\n", l(ll->pre_header), l(ll->head), ll->body.size());
+        //printf("/* loop w/ preheader(%s) and head(%s) has size %lu */\n", l(ll->pre_header), l(ll->head), ll->body.size());
     }
 
     dominator_map &dm(o.force_get<dominator_map>());
     bool updated(false);
     for(unsigned i(0U); i < loops.size(); ++i) {
-        printf("/* hoisting code for loop %s */\n", l(loops[i]->head));
+        //printf("/* hoisting code for loop %s */\n", l(loops[i]->head));
         def_use_map &dum(o.force_get<def_use_map>());
         if(hoist_code(o, dum, dm, *(loops[i]))) {
             updated = true;
