@@ -57,7 +57,9 @@ bool for_each_var_use(
 ) throw() {
     switch(in->opcode) {
     case RET_OP:
-        use_register(in->u.base.src1, &(in->u.base.src1), in, data);
+        if(0 != in->u.base.src1) {
+            use_register(in->u.base.src1, &(in->u.base.src1), in, data);
+        }
         break;
     case STR_OP: case MCPY_OP:
         use_register(in->u.base.src2, &(in->u.base.src2), in, data);

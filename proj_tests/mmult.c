@@ -1,5 +1,5 @@
 #include <stdio.h>
-
+#include <stdlib.h>
 
 #define	N 100
 
@@ -7,7 +7,7 @@ typedef int Matrix[N][N];
 void matrix_multiply (Matrix C, Matrix A, Matrix B, int n);
 
 
-void main (void)
+int main (void)
 {
   int i,j;
   Matrix A;
@@ -31,7 +31,7 @@ void main (void)
     fprintf (f, "C[%d][%d] = %d\n", i, i, C[i][i]);
 
   fclose(f);
-  exit(0);
+  return 0;
 }
 
 void matrix_multiply (Matrix C, Matrix A, Matrix B, int n)
