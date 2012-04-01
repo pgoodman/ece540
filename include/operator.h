@@ -91,4 +91,124 @@ public:
     }
 };
 
+
+namespace op {
+
+    template <typename L, typename R, typename O>
+    struct add {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll + rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct subtract {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll - rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct multiply {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll * rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct divide {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll / rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct modulo {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll % rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct logical_and {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll && rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct logical_or {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll || rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct equal {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll == rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct not_equal {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll != rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct less_than {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll < rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct less_than_equal {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll <= rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct bitwise_and {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll & rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct bitwise_or {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll | rr;
+        }
+    };
+
+    template <typename L, typename R, typename O>
+    struct bitwise_xor {
+        O operator()(const L &ll, const R &rr) throw() {
+            return ll ^ rr;
+        }
+    };
+
+    /// computes a modulo in terms of how SUIF sees it, i.e. always returning
+    /// a non-negative integer
+    int mod(const int &ll, const int &rr) throw();
+
+    /// compute a logical right shift (fill in zeroes for high order bits)
+    int lsr(const int &ll, const int &rr) throw();
+
+    /// perform a logical left shift.
+    /// TODO: worry about rr being too big?
+    int lsl(const int &ll, const int &rr) throw();
+
+    /// compute an arithmetic right shift (use high order bit as fill)
+    int asr(const int &ll, const int &rr) throw();
+
+    /// compute a rotation of the bits
+    int rot(const int &ll, const int &rr) throw();
+}
+
+
 #endif /* asn1_OPERATOR_H_ */

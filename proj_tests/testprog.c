@@ -1,4 +1,5 @@
-#include "stdio.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 #define iterations 300
 #define small_iterations 3
@@ -109,23 +110,43 @@ int f7(int b, int c){
    return j;
 }
 
-void main(){
-   int t;
+int main(){
+   int t, x;
    FILE* f;
 
    t = const1;
+
+   x = f1(const2, const3);
+   fprintf(stderr, "f1=%d\n", x);
+   t += x;
    
-   t += f1(const2, const3);
-   t += f2(const1);
-   t += f3(const2, const3);
-   t += f4(const2, const3);
-   t += f5(const2, const3);
-   t += f6(const1);
-   t += f7(const1, const2);
+   x = f2(const1);
+   fprintf(stderr, "f2=%d\n", x);
+   t += x;
+
+   x = f3(const2, const3);
+   fprintf(stderr, "f3=%d\n", x);
+   t += x;
+
+   x = f4(const2, const3);
+   fprintf(stderr, "f4=%d\n", x);
+   t += x;
+
+   x = f5(const2, const3);
+   fprintf(stderr, "f5=%d\n", x);
+   t += x;
+
+   x = f6(const1);
+   fprintf(stderr, "f6=%d\n", x);
+   t += x;
+
+   x = f7(const1, const2);
+   fprintf(stderr, "f7=%d\n", x);
+   t += x;
 
    f = fopen("testprog.out", "w");
    fprintf(f, "finished: %d\n", t);
    fclose(f);
 
-   exit(0);
+   return 0;
 }

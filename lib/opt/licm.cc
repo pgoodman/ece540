@@ -393,6 +393,7 @@ static void remove_disproved_invariant_ins(invariant_tracker &it) throw() {
 
     for(; iin_it != iin_end; ++iin_it) {
         simple_instr *iin(iin_it->in);
+
         // no arguments used; need to watch out, e.g. if we're doing a
         // non-constant load
         it.instruction_is_invariant = true;
@@ -564,19 +565,6 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
     counter.do_counting_func = increment_var_counter;
     for_each_basic_block(loop, count_variables, counter);
 
-#if 0
-    // go identify how many uses of each variable there are in the loop
-    // thise is used later
-    std::map<simple_reg *, unsigned> num_uses;
-    counter.counter = &num_uses;
-    counter.count_what = for_each_var_def;
-    counter.do_counting_func = initialize_var_counter;
-    for_each_basic_block(loop, count_variables, counter);
-    counter.count_what = for_each_var_use;
-    counter.do_counting_func = increment_var_counter;
-    for_each_basic_block(loop, count_variables, counter);
-#endif
-
     // go identify invariant instructions; this will try to grow the set of
     // invariant instructions until we can't
     std::set<invariant_instr> invariant_ins;
@@ -602,16 +590,12 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
 
     // loop until we can't find any new invariant instructions or registers
     do {
-        //printf("/*round*/\n");
         old_num_ins = invariant_ins.size();
         old_num_regs = invariant_regs.size();
         for_each_basic_block(loop, find_invariant_ins, it);
     } while(old_num_ins < invariant_ins.size()
          || old_num_regs < invariant_regs.size());
 
-    //printf("\n");
-
-    //printf("/* a: num iins = %lu */\n", invariant_ins.size());
     if(invariant_ins.empty()) {
         return false;
     }
@@ -623,7 +607,6 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
     for_each_basic_block(loop, find_dominating_block, it);
     keep_dominating_ins(it);
 
-    //printf("/* b: num iins = %lu */\n", invariant_ins.size());
     if(invariant_ins.empty()) {
         return false;
     }
@@ -632,7 +615,6 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
     // the loop
     keep_dominating_defs(it, dum, dm, loop.body);
 
-    //printf("/* c: num iins = %lu */\n", invariant_ins.size());
     if(invariant_ins.empty()) {
         return false;
     }
@@ -641,7 +623,6 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
     // as invariant
     remove_disproved_invariant_ins(it);
 
-    //printf("/* d: num iins = %lu */\n", invariant_ins.size());
     if(invariant_ins.empty()) {
         return false;
     }
@@ -694,10 +675,6 @@ static bool hoist_code(optimizer &o, def_use_map &dum, dominator_map &dm, loop &
     return true;
 }
 
-static const char *l(basic_block *bb) throw() {
-    return bb->first->u.label.lab->name;
-}
-
 /// hoist loop-invariant code out of all loops in a CFG
 void hoist_loop_invariant_code(optimizer &o, loop_map &lm) throw() {
 #ifndef ECE540_DISABLE_LICM
@@ -706,23 +683,19 @@ void hoist_loop_invariant_code(optimizer &o, loop_map &lm) throw() {
 
     for(unsigned i(0U); i < loops.size(); ++i) {
         loop *ll(loops[i]);
-        //printf("/* loop w/ preheader(%s) and head(%s) has size %lu */\n", l(ll->pre_header), l(ll->head), ll->body.size());
     }
 
     dominator_map &dm(o.force_get<dominator_map>());
     bool updated(false);
     for(unsigned i(0U); i < loops.size(); ++i) {
-        //printf("/* hoisting code for loop %s */\n", l(loops[i]->head));
         def_use_map &dum(o.force_get<def_use_map>());
         if(hoist_code(o, dum, dm, *(loops[i]))) {
             updated = true;
         }
-        //break;
     }
 
     if(updated) {
         o.changed_block();
     }
-
 #endif
 }

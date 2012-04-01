@@ -25,23 +25,23 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     LICM = o.add_pass(hoist_loop_invariant_code);
 
     //               5           7
-    //    1 .--------<---------.-<--.
-    //  .-<-.   2      4       |    |
-    // -`-> CP ->- CF ->- DCE -'->- CSE ->- LICM ->- DCE
-    //       `--<--'             6       8       9
+    //    1 .--------<---------.-<--.                 10
+    //  .-<-.   2      4       |    |              .--->---.
+    // -`-> CP ->- CF ->- DCE -'->- CSE ->- LICM -'- DCE ---`>--
+    //       `--<--'             6       8        9         11
     //          3
 
-    o.cascade_if(CP, CP, true);     // 1
-    o.cascade_if(CP, CF, false);    // 2
-    o.cascade_if(CF, CP, true);     // 3
-    o.cascade_if(CF, DCE, false);   // 4
-    o.cascade_if(DCE, CP, true);    // 5
-    o.cascade_if(DCE, CSE, false);  // 6
-    o.cascade_if(CSE, CP, true);    // 7
-    o.cascade_if(CSE, LICM, false); // 8
+    o.cascade_if(CP, CP, true);         // 1
+    o.cascade_if(CP, CF, false);        // 2
+    o.cascade_if(CF, CP, true);         // 3
+    o.cascade_if(CF, DCE, false);       // 4
+    o.cascade_if(DCE, CP, true);        // 5
+    o.cascade_if(DCE, CSE, false);      // 6
+    o.cascade_if(CSE, CP, true);        // 7
+    o.cascade_if(CSE, LICM, false);     // 8
 
     DCE = o.add_pass(eliminate_dead_code);
-    o.cascade_if(LICM, DCE, true);
+    o.cascade_if(LICM, DCE, true);      // 9
 
     o.run(CP);
 

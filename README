@@ -26,7 +26,9 @@ Notable/clever things:
     ------------                        ----
     Constant folding                    ECE540_DISABLE_CF
     Copy propagation                    ECE540_DISABLE_CP
+    Common subexpression elimination    ECE540_DISABLE_CSE
     Deadcode elimination                ECE540_DISABLE_DCE
     Loop-invariant code motion          ECE540_DISABLE_LICM
+    Compile-time evaluation             ECE540_DISABLE_EVAL
 
     
