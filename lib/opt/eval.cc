@@ -14,11 +14,15 @@ extern "C" {
 #include <cassert>
 #include <stdint.h>
 #include <exception>
+#include <cstdlib>
 
 #include "include/optimizer.h"
 #include "include/operator.h"
 #include "include/instr.h"
 #include "include/unsafe_cast.h"
+
+#include "include/data_flow/var_def.h"
+#include "include/data_flow/var_use.h"
 
 /// filters out specific operations that cannot be performed on floating point
 /// numbers
@@ -130,33 +134,52 @@ USELESS_DOUBLE_FUNCTOR(unary_op_functor_filter, op::negate)
 struct abstract_value {
 public:
     int ref_count;
+    int depth;
     simple_instr *instr;
+    simple_reg *emitted_reg;
 
     enum {
         INT, UNSIGNED, FLOAT, UNKNOWN
     } type;
 
     enum {
-        VALUE, SYMBOL, EXPRESSION
+        VALUE       = 1 << 0,
+        SYMBOL      = 1 << 1,
+        EXPRESSION  = 1 << 2
     } kind;
+
+    enum {
+        KIND = VALUE | SYMBOL | EXPRESSION
+    };
 
     abstract_value(simple_instr *in) throw()
         : ref_count(1)
         , instr(in)
+        , emitted_reg(0)
+        , depth(1)
     { }
 
     virtual void union_symbols(std::set<simple_reg *> &) throw() = 0;
 };
 
 /// reference counting
-static void inc_ref(abstract_value *val) throw() {
+static abstract_value *inc_ref(abstract_value *val) throw() {
     ++(val->ref_count);
+    return val;
 }
 
 static void dec_ref(abstract_value *val) throw() {
     if(0 == --(val->ref_count)) {
         delete val;
     }
+}
+
+static void unsafe_dec_ref(abstract_value *val) throw() {
+    --(val->ref_count);
+}
+
+static int max_depth(int a, int b) throw() {
+    return a < b ? b : a;
 }
 
 /// represents an abstract expression that depends on some symbolic values. this
@@ -166,6 +189,10 @@ static void dec_ref(abstract_value *val) throw() {
 /// abstract interpreter will bail out, thus maintaining the correct invariant.
 struct symbolic_expression : public abstract_value {
 public:
+
+    enum {
+        KIND = EXPRESSION
+    };
 
     enum {
         UNARY, BINARY
@@ -183,6 +210,7 @@ public:
         , left(a0)
         , right(a1)
     {
+        this->depth = max_depth(a0->depth, a1->depth) + 1;
         a0->union_symbols(dependent_regs);
         a1->union_symbols(dependent_regs);
 
@@ -200,6 +228,7 @@ public:
         , left(a0)
         , right(0)
     {
+        this->depth = a0->depth + 1;
         a0->union_symbols(dependent_regs);
 
         inc_ref(a0);
@@ -228,6 +257,10 @@ public:
 /// represents a single value. The value is known at compile time.
 struct concrete_value : public abstract_value {
 public:
+
+    enum {
+        KIND = VALUE
+    };
 
     union {
         int as_int;
@@ -268,6 +301,10 @@ public:
 struct symbolic_value : public abstract_value {
 public:
 
+    enum {
+        KIND = SYMBOL
+    };
+
     simple_reg *reg;
 
     symbolic_value(simple_reg *r) throw()
@@ -287,7 +324,10 @@ public:
 
 /// an exception thrown when something illegal is done, i.e. something that
 /// cannot be interpreted abstractly.
-struct stop_interpreter { };
+struct stop_interpreter {
+public:
+    stop_interpreter(int) throw() { }
+};
 
 /// check if an abstract value uses a particular register; this is how cycles
 /// are conservatively detected.
@@ -306,8 +346,75 @@ static bool uses_register(const abstract_value *val, simple_reg *reg) throw() {
     }
 }
 
+/// pattern match over a binary expression
+template <typename L, typename R>
+bool match_binary(abstract_value *val, L *&a0, R *&a1) throw() {
+    if(abstract_value::EXPRESSION != val->kind) {
+        return false;
+    }
+
+    symbolic_expression *expr(unsafe_cast<symbolic_expression *>(val));
+
+    if(symbolic_expression::UNARY == expr->arity) {
+        return false;
+    }
+
+    abstract_value *left(expr->left)
+                 , *right(expr->right);
+
+    if((L::KIND & left->kind) && (R::KIND & right->kind)) {
+        a0 = unsafe_cast<L *>(left);
+        a1 = unsafe_cast<R *>(right);
+    } else if((L::KIND & right->kind) && (R::KIND & left->kind)) {
+        a0 = unsafe_cast<L *>(right);
+        a1 = unsafe_cast<R *>(left);
+    } else {
+        return false;
+    }
+
+    return true;
+}
+
+/// attempt to combine expressions of the form C1 + (C2 + ?) into (C1 + C2) + ?
+static abstract_value *combine_constant_adds(
+    simple_instr *instr,
+    abstract_value *a0,
+    abstract_value *a1
+) throw() {
+    if(ADD_OP != instr->opcode) {
+        return 0;
+    }
+
+    concrete_value *val(0);
+    abstract_value *expr(0);
+
+    // we're pattern matching for V op (V op ?)
+    if(abstract_value::VALUE == a0->kind) {
+        val = unsafe_cast<concrete_value *>(a0);
+        expr = a1;
+    } else if(abstract_value::VALUE == a1->kind) {
+        val = unsafe_cast<concrete_value *>(a1);
+        expr = a0;
+    } else {
+        return 0;
+    }
+
+    concrete_value *sub_val(0);
+    abstract_value *sub_expr(0);
+
+    if(match_binary(expr, sub_val, sub_expr)) {
+
+        // okay, lets flatten this
+        concrete_value *new_sub_val(new concrete_value(sub_val->instr, val->value.as_int + sub_val->value.as_int));
+        unsafe_dec_ref(new_sub_val); // make sure ref count on the sub-value is 1, not 2
+        return new symbolic_expression(instr, new_sub_val, sub_expr);
+    }
+
+    return 0;
+}
+
 /// exception value that is thrown if interpretation should stop
-const static stop_interpreter STOP_INTERPRETER;
+const static stop_interpreter STOP_INTERPRETER(0);
 
 /// perform a binary operation on two abstract values
 template <template <typename L, typename R, typename O> class OpFunctor>
@@ -331,13 +438,13 @@ abstract_value *apply_binary(
 
         switch(a0->type) {
         case abstract_value::INT:
-            return new concrete_value(instr, int_functor()(p0->value.as_int, p0->value.as_int));
+            return new concrete_value(instr, int_functor()(p0->value.as_int, p1->value.as_int));
 
         case abstract_value::UNSIGNED:
-            return new concrete_value(instr, unsigned_functor()(p0->value.as_uint, p0->value.as_uint));
+            return new concrete_value(instr, unsigned_functor()(p0->value.as_uint, p1->value.as_uint));
 
         case abstract_value::FLOAT:
-            return new concrete_value(instr, double_functor()(p0->value.as_float, p0->value.as_float));
+            return new concrete_value(instr, double_functor()(p0->value.as_float, p1->value.as_float));
 
         default:
             assert(false);
@@ -350,7 +457,13 @@ abstract_value *apply_binary(
             throw STOP_INTERPRETER;
         }
 
-        return new symbolic_expression(instr, a0, a1);
+        abstract_value *ret(combine_constant_adds(instr, a0, a1));
+
+        if(0 == ret) {
+            ret = new symbolic_expression(instr, a0, a1);
+        }
+
+        return ret;
     }
 }
 
@@ -416,6 +529,7 @@ struct interpreter_state {
     symbol_map registers;
 
     simple_instr *pc;
+    simple_instr *ret;
 
     bool did_return;
     abstract_value *return_val;
@@ -468,9 +582,19 @@ static bool setup_interpreter(interpreter_state &s) throw() {
     src2 = s.registers[src2_reg]; \
     dst = &(s.registers[dst_reg]);
 
-static bool assign(abstract_value **dst, abstract_value *src) throw() {
+/// this is to limit crazy amounts of loop unrolling
+enum {
+    MAX_DEPTH = 300
+};
+
+static bool assign(abstract_value **dst, abstract_value *src) throw(stop_interpreter) {
     dec_ref(*dst);
     *dst = src;
+
+    if(MAX_DEPTH < src->depth) {
+        throw STOP_INTERPRETER;
+    }
+
     return true;
 }
 
@@ -507,6 +631,7 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
     case NOP_OP: return true;
 
     case RET_OP:
+        s.ret = in;
         s.did_return = true;
         if(0 != in->u.base.src1) {
             s.return_val = s.registers[in->u.base.src1];
@@ -524,8 +649,7 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
 
         // load src first, just in case src and *dst are the same
         } else {
-            src1 = s.registers[src1_reg];
-            inc_ref(src1);
+            src1 = inc_ref(s.registers[src1_reg]);
 
             dst = &(s.registers[dst_reg]);
             dec_ref(*dst);
@@ -554,6 +678,7 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
             assert(false);
             return false;
         }
+
         break;
 
     case NEG_OP: LOOKUP_ARGS
@@ -635,7 +760,7 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
         }
 
         val = unsafe_cast<concrete_value *>(src1);
-        if(val->value.as_int) {
+        if(1 == val->value.as_int) {
             s.pc = s.branch_targets[in->u.bj.target];
         }
         return true;
@@ -647,7 +772,7 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
         }
 
         val = unsafe_cast<concrete_value *>(src1);
-        if(!val->value.as_int) {
+        if(1 != val->value.as_int) {
             s.pc = s.branch_targets[in->u.bj.target];
         }
         return true;
@@ -675,6 +800,7 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
             assert(false);
             return false;
         }
+        break;
 
     case CALL_OP: assert(false);  return false;
 
@@ -709,34 +835,147 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
     return false;
 }
 
-/// attempt to perform an abstract interpretation of a function
-void abstract_evaluator(optimizer &o) throw() {
-#ifndef ECE540_DISABLE_EVAL
+static simple_reg *emit_dispatch(simple_instr **prev, abstract_value *val) throw();
+static simple_reg *emit(simple_instr **prev, concrete_value *val) throw();
+static simple_reg *emit(simple_instr **prev, symbolic_value *val) throw();
+static simple_reg *emit(simple_instr **prev, symbolic_expression *val) throw();
 
-    interpreter_state s;
-    s.pc = o.first_instruction();
-    s.did_return = false;
-    s.return_val = 0;
+static simple_reg *emit_dispatch(simple_instr **prev, abstract_value *val) throw() {
+    if(abstract_value::VALUE == val->kind) {
+        return emit(prev, unsafe_cast<concrete_value *>(val));
+    } else if(abstract_value::SYMBOL == val->kind) {
+        return emit(prev, unsafe_cast<symbolic_value *>(val));
+    } else {
+        return emit(prev, unsafe_cast<symbolic_expression *>(val));
+    }
+}
 
-    if(setup_interpreter(s)) {
-        try {
-            while(interpret_instruction(s)) { /* loop a doop */ }
-        } catch(stop_interpreter &) {
-            goto cleanup;
-        }
+/// emit the instructions for loading a constant
+static simple_reg *emit(simple_instr **prev, concrete_value *val) throw() {
+
+    simple_instr *orig_ldc(val->instr);
+    simple_reg *orig_dest(val->instr->u.ldc.dst);
+
+    // it will be used multiple times, and codegen has already happened
+    if(0 != val->emitted_reg) {
+        return val->emitted_reg;
     }
 
-    if(!s.did_return) {
-        goto cleanup;
+    // load constant. note: orig_ldc isn't actually guranteed to be a LDC, but
+    // should have approximately the correct type
+    simple_instr *in(new_instr(LDC_OP, orig_ldc->type));
+    val->emitted_reg = new_register(orig_dest->var->type, TEMP_REG);
+
+    in->next = in->prev = 0;
+    in->u.ldc.dst = val->emitted_reg;
+
+    // put the right value in
+    switch(val->type) {
+    case abstract_value::INT:
+        in->u.ldc.value.format = IMMED_INT;
+        in->u.ldc.value.u.ival = val->value.as_int;
+        break;
+    case abstract_value::UNSIGNED:
+        in->u.ldc.value.format = IMMED_INT;
+        in->u.ldc.value.u.ival = val->value.as_uint;
+        break;
+    case abstract_value::FLOAT:
+        in->u.ldc.value.format = IMMED_FLOAT;
+        in->u.ldc.value.u.fval = val->value.as_float;
+        break;
+    default: assert(false); break;
     }
 
-    // okay, we can do code gen now!
-    fprintf(stderr, "successfully abstractly interpreted function!\n");
+    instr::insert_after(in, *prev);
+    *prev = in;
 
-    // time to clean things up
-cleanup:
+    // copy iff this constant will be used more than once
+    if(1 < val->ref_count) {
+        in = new_instr(CPY_OP, orig_ldc->type);
+        in->u.base.dst = new_register(orig_dest->var->type, PSEUDO_REG);
+        in->u.base.src1 = val->emitted_reg;
+        val->emitted_reg = in->u.base.dst;
+        instr::insert_after(in, *prev);
 
-    // clear out the symbolic values
+        assert((*prev)->next == in);
+
+        *prev = in;
+    }
+
+    return val->emitted_reg;
+}
+
+/// emit the register being used
+static simple_reg *emit(simple_instr **, symbolic_value *val) throw() {
+    return val->reg;
+}
+
+struct register_injector {
+    unsigned accessor;
+    simple_reg *regs[3];
+};
+
+/// inject registers into an instruction
+void inject_register(
+    simple_reg *,
+    simple_reg **loc,
+    simple_instr *,
+    register_injector &inj
+) throw() {
+    *loc = inj.regs[inj.accessor++];
+}
+
+/// emit instructions for evaluating unary and binary expressions
+static simple_reg *emit(simple_instr **prev, symbolic_expression *val) throw() {
+
+    if(0 != val->emitted_reg) {
+        return val->emitted_reg;
+    }
+
+    unsigned i(0);
+
+    register_injector inj;
+    inj.accessor = 0U;
+    inj.regs[i++] = emit_dispatch(prev, val->left);
+
+    if(symbolic_expression::BINARY == val->arity) {
+        inj.regs[i++] = emit_dispatch(prev, val->right);
+    }
+
+    // both operands have been evaluated; now make the instruction to perform
+    // the computation
+    simple_instr *orig_in(val->instr);
+    simple_instr *in(new_instr(orig_in->opcode, orig_in->type));
+
+    assert(CPY_OP != orig_in->opcode);
+    assert(NOP_OP != orig_in->opcode);
+
+    memcpy(in, orig_in, sizeof *in);
+    in->next = in->prev = 0;
+
+    simple_reg *orig_reg(0);
+    simple_reg *out(0);
+
+    // create the register being assigned to
+    if(for_each_var_def(orig_in, orig_reg)) {
+        inj.regs[i++] = out = new_register(orig_reg->var->type, PSEUDO_REG);
+    } else {
+        assert(false);
+    }
+
+    // inject the registers
+    for_each_var_use(inject_register, in, inj);
+    for_each_var_def(inject_register, in, inj);
+
+    // chain the instruction in
+    instr::insert_after(in, *prev);
+    *prev = in;
+
+    return out;
+}
+
+/// cleanup the registers in memory
+static void cleanup_state(interpreter_state &s) throw() {
     s.branch_targets.clear();
     symbol_map::iterator reg_it(s.registers.begin())
                        , reg_end(s.registers.end());
@@ -747,6 +986,76 @@ cleanup:
     }
 
     s.registers.clear();
+}
+
+/// attempt to perform an abstract interpretation of a function
+void abstract_evaluator(optimizer &o) throw() {
+#ifndef ECE540_DISABLE_EVAL
+
+    simple_instr *first_instr(o.first_instruction());
+    simple_instr *ret_instr(0);
+    simple_instr dummy_first;
+    simple_instr *last(&dummy_first);
+
+    interpreter_state s;
+    s.pc = first_instr;
+    s.did_return = false;
+    s.return_val = 0;
+
+    if(setup_interpreter(s)) {
+        try {
+            while(interpret_instruction(s)) { /* loop a doop */ }
+        } catch(stop_interpreter &) {
+            cleanup_state(s);
+            return;
+        }
+    }
+
+    if(!s.did_return) {
+        cleanup_state(s);
+        return;
+    }
+
+    // notify the optimizer that we've done some substantial things
+    o.changed_block();
+    o.changed_def();
+    o.changed_use();
+
+    // create the return instruction
+    ret_instr = new_instr(RET_OP, s.ret->type);
+    ret_instr->prev = 0;
+    ret_instr->next = 0;
+
+    // a return with no val; clear out the first instruction, add the thing in
+    if(0 == s.return_val) {
+        first_instr->opcode = NOP_OP;
+        instr::insert_after(ret_instr, first_instr);
+        cleanup_state(s);
+        return;
+    }
+
+    // put all constants on an even footing in terms of the refcount telling
+    // use how many times they are used
+    inc_ref(s.return_val);
+    cleanup_state(s);
+
+    // okay, we can do code gen now!
+    memset(last, 0, sizeof *last);
+    ret_instr->u.base.src1 = emit_dispatch(&last, s.return_val);
+    dec_ref(s.return_val);
+
+    // clear out the first instruction
+    first_instr->opcode = NOP_OP;
+    first_instr->next = first_instr->prev = 0;
+
+    if(&dummy_first == last) {
+        instr::insert_after(ret_instr, first_instr);
+    } else {
+
+        first_instr->next = dummy_first.next->next;
+        instr::insert_after(dummy_first.next, first_instr);
+        instr::insert_after(ret_instr, last);
+    }
 
 #endif
 }

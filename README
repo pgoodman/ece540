@@ -29,7 +29,6 @@ Notable/clever things:
     Common subexpression elimination    ECE540_DISABLE_CSE
     Deadcode elimination                ECE540_DISABLE_DCE
     Loop-invariant code motion          ECE540_DISABLE_LICM
-    
-    Compile-time evaluation             ECE540_DISABLE_EVAL
+    Abstract interpretation             ECE540_DISABLE_EVAL
 
     
