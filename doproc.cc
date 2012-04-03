@@ -10,8 +10,9 @@
 #include "include/opt/dce.h"
 #include "include/opt/cse.h"
 #include "include/opt/licm.h"
+#include "include/opt/eval.h"
 
-static optimizer::pass CF, CP, DCE, CSE, LICM;
+static optimizer::pass CF, CP, DCE, CSE, LICM, EVAL;
 
 /// set up and run the optimizer pipeline.
 simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
@@ -23,11 +24,12 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     DCE = o.add_pass(eliminate_dead_code);
     CSE = o.add_pass(eliminate_common_sub_expressions);
     LICM = o.add_pass(hoist_loop_invariant_code);
+    EVAL = o.add_pass(abstract_evaluator);
 
     //               5           7
     //    1 .--------<---------.-<--.                 10
     //  .-<-.   2      4       |    |              .--->---.
-    // -`-> CP ->- CF ->- DCE -'->- CSE ->- LICM -'- DCE ---`>--
+    // -`-> CP ->- CF ->- DCE -'->- CSE ->- LICM -'- DCE ---`>-- EVAL
     //       `--<--'             6       8        9         11
     //          3
 
@@ -41,7 +43,11 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
     o.cascade_if(CSE, LICM, false);     // 8
 
     DCE = o.add_pass(eliminate_dead_code);
+
     o.cascade_if(LICM, DCE, true);      // 9
+
+    o.cascade_if(LICM, EVAL, false);    // 10
+    o.cascade(DCE, EVAL);               // 11
 
     o.run(CP);
 

@@ -10,9 +10,8 @@
 #define project_EVAL_H_
 
 class optimizer;
-class cfg;
 
-void eval_pure_function(optimizer &, cfg &) throw();
+void abstract_evaluator(optimizer &) throw();
 
 
 #endif /* project_EVAL_H_ */

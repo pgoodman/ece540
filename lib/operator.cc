@@ -9,7 +9,8 @@
 #include "include/diag.h"
 
 namespace op {
-/// computes a modulo in terms of how SUIF sees it, i.e. always returning
+
+    /// computes a modulo in terms of how SUIF sees it, i.e. always returning
     /// a non-negative integer
     int mod(const int &ll, const int &rr) throw() {
         int mod(ll % rr);
@@ -20,13 +21,11 @@ namespace op {
     }
 
     /// compute a logical right shift (fill in zeroes for high order bits)
-    int lsr(const int &ll, const int &rr) throw() {
+    int lsr(const int &ll, const unsigned &rr) throw() {
         if(rr > (sizeof ll * 8U)) {
             diag::warning("Right shift of size %d is too big.", rr);
             return ll >= 0 ? 0 : ~0;
 
-        } else if(rr < 0) {
-            diag::warning("Right shift of size %d is too small.", rr);
         }
 
         // TODO: issue on x < rr < num bits, where x is max size of shift right?
@@ -37,7 +36,7 @@ namespace op {
 
     /// perform a logical left shift.
     /// TODO: worry about rr being too big?
-    int lsl(const int &ll, const int &rr) throw() {
+    int lsl(const int &ll, const unsigned &rr) throw() {
         return ll << rr;
     }
 
@@ -46,12 +45,14 @@ namespace op {
     };
 
     /// compute an arithmetic right shift (use high order bit as fill)
-    int asr(const int &ll, const int &rr) throw() {
+    int asr(const int &ll, const unsigned &rr) throw() {
         int lsr_(lsr(ll, rr));
         if(ll >= 0) {
             return lsr_;
-        } else {
+        } else if(rr < INT_NUM_BITS) {
             return lsr_ | lsl(~0, INT_NUM_BITS - rr);
+        } else {
+            return ~0;
         }
     }
 

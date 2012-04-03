@@ -47,10 +47,10 @@ struct cf_state {
     /// true iff we should keep looking for constants
     bool keep_looking_for_constants;
 
-    /// return true iff a constant is stored in the register. if the register
-    /// contains a constant, assign the constant to the variable constant passed
-    /// in by reference
-    bool get_constant(simple_reg *reg, int &constant) throw() {
+private:
+
+    template <typename T>
+    bool get_constant_impl(simple_reg *reg, T &constant) throw() {
         if(0U != peephole.count(reg)) {
             constant = peephole[reg];
             return true;
@@ -62,6 +62,19 @@ struct cf_state {
         }
 
         return false;
+    }
+
+public:
+
+    /// return true iff a constant is stored in the register. if the register
+    /// contains a constant, assign the constant to the variable constant passed
+    /// in by reference
+    bool get_constant(simple_reg *reg, int &constant) throw() {
+        return get_constant_impl(reg, constant);
+    }
+
+    bool get_constant(simple_reg *reg, unsigned &constant) throw() {
+        return get_constant_impl(reg, constant);
     }
 
     /// clear the peephole cache
@@ -103,8 +116,9 @@ struct cf_state {
 
 /// fold an abitrary binary operator
 template <
-    int (*operator_func)(const int &, const int &),
-    bool (*check_args)(int, int)
+    typename T0, typename T1,
+    int (*operator_func)(const T0 &, const T1 &),
+    bool (*check_args)(T0, T1)
 >
 class binary {
 public:
@@ -114,7 +128,8 @@ public:
         simple_reg *right_reg,
         int &result
     ) throw() {
-        int left_val(0), right_val(0);
+        T0 left_val(0);
+        T1 right_val(0);
         if(state.get_constant(left_reg, left_val)
         && state.get_constant(right_reg, right_val)
         && check_args(left_val, right_val)) {
@@ -129,6 +144,9 @@ namespace op {
 
     /// automatically accept the arguments as valid
     bool accept_args(int, int) throw() {
+        return true;
+    }
+    bool accept_args(int, unsigned) throw() {
         return true;
     }
 
@@ -146,23 +164,23 @@ namespace op {
 /// table of functions to fold binary operators
 typedef bool (fold_op_func)(cf_state &, simple_reg *, simple_reg *, int &);
 fold_op_func *fold_funcs[] = {
-    binary<binary_operator<int>::add, op::accept_args>::fold, // ADD_OP
-    binary<binary_operator<int>::subtract, op::accept_args>::fold, // SUB_OP
-    binary<binary_operator<int>::multiply, op::accept_args>::fold, // MUL_OP
-    binary<binary_operator<int>::divide, op::accept_nonzero_right>::fold, // DIV_OP
-    binary<binary_operator<int>::modulo, op::accept_nonzero_right>::fold, // REM_OP
-    binary<op::mod, op::accept_nonzero_right>::fold, // MOD_OP
-    binary<binary_operator<int>::bitwise_and, op::accept_args>::fold, // AND_OP
-    binary<binary_operator<int>::bitwise_or, op::accept_args>::fold, // IOR_OP
-    binary<binary_operator<int>::bitwise_xor, op::accept_args>::fold, // XOR_OP
-    binary<op::asr, op::accept_args>::fold, // ASR_OP
-    binary<op::lsl, op::accept_args>::fold, // LSL_OP
-    binary<op::lsr, op::accept_args>::fold, // LSR_OP
-    binary<op::rot, op::accept_args>::fold, // ROT_OP
-    binary<binary_operator<int>::equal, op::accept_args>::fold, // SEQ_OP
-    binary<binary_operator<int>::not_equal, op::accept_args>::fold, // SNE_OP
-    binary<binary_operator<int>::less_than, op::accept_args>::fold, // SL_OP
-    binary<binary_operator<int>::less_than_equal, op::accept_args>::fold, // SLE_OP
+    binary<int,int,binary_operator<int>::add, op::accept_args>::fold, // ADD_OP
+    binary<int,int,binary_operator<int>::subtract, op::accept_args>::fold, // SUB_OP
+    binary<int,int,binary_operator<int>::multiply, op::accept_args>::fold, // MUL_OP
+    binary<int,int,binary_operator<int>::divide, op::accept_nonzero_right>::fold, // DIV_OP
+    binary<int,int,binary_operator<int>::modulo, op::accept_nonzero_right>::fold, // REM_OP
+    binary<int,int,op::mod, op::accept_nonzero_right>::fold, // MOD_OP
+    binary<int,int,binary_operator<int>::bitwise_and, op::accept_args>::fold, // AND_OP
+    binary<int,int,binary_operator<int>::bitwise_or, op::accept_args>::fold, // IOR_OP
+    binary<int,int,binary_operator<int>::bitwise_xor, op::accept_args>::fold, // XOR_OP
+    binary<int,unsigned,op::asr, op::accept_args>::fold, // ASR_OP
+    binary<int,unsigned,op::lsl, op::accept_args>::fold, // LSL_OP
+    binary<int,unsigned,op::lsr, op::accept_args>::fold, // LSR_OP
+    binary<int,int,op::rot, op::accept_args>::fold, // ROT_OP
+    binary<int,int,binary_operator<int>::equal, op::accept_args>::fold, // SEQ_OP
+    binary<int,int,binary_operator<int>::not_equal, op::accept_args>::fold, // SNE_OP
+    binary<int,int,binary_operator<int>::less_than, op::accept_args>::fold, // SL_OP
+    binary<int,int,binary_operator<int>::less_than_equal, op::accept_args>::fold, // SLE_OP
 };
 
 /// go fold constants in each block

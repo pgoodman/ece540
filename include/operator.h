@@ -94,6 +94,20 @@ public:
 
 namespace op {
 
+    template <typename L, typename O>
+    struct bitwise_not {
+        O operator()(const L &ll) throw() {
+            return ~ll;
+        }
+    };
+
+    template <typename L, typename O>
+    struct negate {
+        O operator()(const L &ll) throw() {
+            return -ll;
+        }
+    };
+
     template <typename L, typename R, typename O>
     struct add {
         O operator()(const L &ll, const R &rr) throw() {
@@ -197,14 +211,14 @@ namespace op {
     int mod(const int &ll, const int &rr) throw();
 
     /// compute a logical right shift (fill in zeroes for high order bits)
-    int lsr(const int &ll, const int &rr) throw();
+    int lsr(const int &ll, const unsigned &rr) throw();
 
     /// perform a logical left shift.
     /// TODO: worry about rr being too big?
-    int lsl(const int &ll, const int &rr) throw();
+    int lsl(const int &ll, const unsigned &rr) throw();
 
     /// compute an arithmetic right shift (use high order bit as fill)
-    int asr(const int &ll, const int &rr) throw();
+    int asr(const int &ll, const unsigned &rr) throw();
 
     /// compute a rotation of the bits
     int rot(const int &ll, const int &rr) throw();

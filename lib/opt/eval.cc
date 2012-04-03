@@ -13,21 +13,444 @@ extern "C" {
 #include <map>
 #include <cassert>
 #include <stdint.h>
+#include <exception>
 
 #include "include/optimizer.h"
-#include "include/cfg.h"
-#include "include/basic_block.h"
 #include "include/operator.h"
 #include "include/instr.h"
+#include "include/unsafe_cast.h"
 
+/// filters out specific operations that cannot be performed on floating point
+/// numbers
+template <
+    template <typename L, typename R, typename O> class OpFunctor,
+    typename L0
+>
+class binary_op_functor_filter {
+public:
+    typedef OpFunctor<L0,L0,L0> functor;
+};
+
+template <
+    template <typename L, typename O> class OpFunctor,
+    typename L0
+>
+class unary_op_functor_filter {
+public:
+    typedef OpFunctor<L0,L0> functor;
+};
+
+class useless_double_functor {
+public:
+    double operator()(const double &, const double &) throw() {
+        return 0.0;
+    }
+    double operator()(const double &) throw() {
+        return 0.0;
+    }
+};
+
+/// perform a unary type cast from one type to another
+template <typename SourceType, typename>
+struct cast_to_int {
+    int operator()(const SourceType &ii) throw() {
+        return static_cast<int>(ii);
+    }
+};
+template <typename SourceType, typename>
+struct cast_to_unsigned {
+    unsigned operator()(const SourceType &ii) throw() {
+        return static_cast<unsigned>(ii);
+    }
+};
+template <typename SourceType, typename>
+struct cast_to_double {
+    double operator()(const SourceType &ii) throw() {
+        return static_cast<double>(ii);
+    }
+};
+
+/// various SUIF-specific ops that are annoying
+template <typename SourceType, typename, typename>
+struct suif_mod {
+    int operator()(const SourceType &ll, const SourceType &rr) throw() {
+        return op::mod((int) ll, (int) rr);
+    }
+};
+
+template <typename SourceType, typename, typename>
+struct suif_lsr {
+    int operator()(const SourceType &ll, const SourceType &rr) throw() {
+        return op::lsr((int) ll, (unsigned) rr);
+    }
+};
+
+template <typename SourceType, typename, typename>
+struct suif_lsl {
+    int operator()(const SourceType &ll, const SourceType &rr) throw() {
+        return op::lsl((int) ll, (unsigned) rr);
+    }
+};
+
+template <typename SourceType, typename, typename>
+struct suif_asr {
+    int operator()(const SourceType &ll, const SourceType &rr) throw() {
+        return op::asr((int) ll, (unsigned) rr);
+    }
+};
+
+template <typename SourceType, typename, typename>
+struct suif_rot {
+    int operator()(const SourceType &ll, const SourceType &rr) throw() {
+        return op::rot((int) ll, (unsigned) rr);
+    }
+};
+
+#define USELESS_DOUBLE_FUNCTOR(filter, the_op) \
+    template <> \
+    class filter<the_op, double> { \
+    public: \
+        typedef useless_double_functor functor; \
+    };
+
+USELESS_DOUBLE_FUNCTOR(binary_op_functor_filter, op::modulo)
+USELESS_DOUBLE_FUNCTOR(binary_op_functor_filter, op::bitwise_and)
+USELESS_DOUBLE_FUNCTOR(binary_op_functor_filter, op::bitwise_or)
+USELESS_DOUBLE_FUNCTOR(binary_op_functor_filter, op::bitwise_xor)
+USELESS_DOUBLE_FUNCTOR(binary_op_functor_filter, suif_mod)
+USELESS_DOUBLE_FUNCTOR(binary_op_functor_filter, suif_lsr)
+USELESS_DOUBLE_FUNCTOR(binary_op_functor_filter, suif_lsl)
+USELESS_DOUBLE_FUNCTOR(binary_op_functor_filter, suif_asr)
+USELESS_DOUBLE_FUNCTOR(binary_op_functor_filter, suif_rot)
+USELESS_DOUBLE_FUNCTOR(unary_op_functor_filter, op::bitwise_not)
+USELESS_DOUBLE_FUNCTOR(unary_op_functor_filter, op::negate)
+#undef USELESS_DOUBLE_FUNCTOR
+
+/// represents the base of a runtime value in the abstract interpreter
+struct abstract_value {
+public:
+    int ref_count;
+    simple_instr *instr;
+
+    enum {
+        INT, UNSIGNED, FLOAT, UNKNOWN
+    } type;
+
+    enum {
+        VALUE, SYMBOL, EXPRESSION
+    } kind;
+
+    abstract_value(simple_instr *in) throw()
+        : ref_count(1)
+        , instr(in)
+    { }
+
+    virtual void union_symbols(std::set<simple_reg *> &) throw() = 0;
+};
+
+/// reference counting
+static void inc_ref(abstract_value *val) throw() {
+    ++(val->ref_count);
+}
+
+static void dec_ref(abstract_value *val) throw() {
+    if(0 == --(val->ref_count)) {
+        delete val;
+    }
+}
+
+/// represents an abstract expression that depends on some symbolic values. this
+/// is guaranteed to be a DAG by virtue of dependent_regs, which is the union
+/// of all symbolic registers in all sub-expressions. If at any point one
+/// assigns to symbolic register a value that depends on that register, the
+/// abstract interpreter will bail out, thus maintaining the correct invariant.
+struct symbolic_expression : public abstract_value {
+public:
+
+    enum {
+        UNARY, BINARY
+    } arity;
+
+    std::set<simple_reg *> dependent_regs;
+
+    abstract_value *left;
+    abstract_value *right;
+
+    /// constructor for binary expression
+    symbolic_expression(simple_instr *in, abstract_value *a0, abstract_value *a1) throw()
+        : abstract_value(in)
+        , arity(BINARY)
+        , left(a0)
+        , right(a1)
+    {
+        a0->union_symbols(dependent_regs);
+        a1->union_symbols(dependent_regs);
+
+        inc_ref(a0);
+        inc_ref(a1);
+
+        this->type = a0->type;
+        this->kind = EXPRESSION;
+    }
+
+    /// constructor for unary expression
+    symbolic_expression(simple_instr *in, abstract_value *a0) throw()
+        : abstract_value(in)
+        , arity(UNARY)
+        , left(a0)
+        , right(0)
+    {
+        a0->union_symbols(dependent_regs);
+
+        inc_ref(a0);
+
+        this->type = a0->type;
+        this->kind = EXPRESSION;
+    }
+
+    virtual ~symbolic_expression(void) throw() {
+        dec_ref(left);
+        left = 0;
+
+        if(0 != right) {
+            dec_ref(right);
+            right = 0;
+        }
+
+        dependent_regs.clear();
+    }
+
+    virtual void union_symbols(std::set<simple_reg *> &syms) throw() {
+        syms.insert(dependent_regs.begin(), dependent_regs.end());
+    }
+};
+
+/// represents a single value. The value is known at compile time.
+struct concrete_value : public abstract_value {
+public:
+
+    union {
+        int as_int;
+        unsigned as_uint;
+        double as_float;
+    } value;
+
+    concrete_value(simple_instr *in, int i) throw()
+        : abstract_value(in)
+    {
+        value.as_int = i;
+        this->type = INT;
+        this->kind = VALUE;
+    }
+
+    concrete_value(simple_instr *in, unsigned u) throw()
+        : abstract_value(in)
+    {
+        value.as_uint = u;
+        this->type = UNSIGNED;
+        this->kind = VALUE;
+    }
+
+    concrete_value(simple_instr *in, double f) throw()
+        : abstract_value(in)
+    {
+        value.as_float = f;
+        this->type = FLOAT;
+        this->kind = VALUE;
+    }
+
+    virtual ~concrete_value(void) throw() { }
+
+    virtual void union_symbols(std::set<simple_reg *> &) throw() { }
+};
+
+/// represents a symbolic value stored in a register
+struct symbolic_value : public abstract_value {
+public:
+
+    simple_reg *reg;
+
+    symbolic_value(simple_reg *r) throw()
+        : abstract_value(0)
+        , reg(r)
+    {
+        this->type = UNKNOWN;
+        this->kind = SYMBOL;
+    }
+
+    virtual ~symbolic_value(void) throw() { }
+
+    virtual void union_symbols(std::set<simple_reg *> &syms) throw() {
+        syms.insert(reg);
+    }
+};
+
+/// an exception thrown when something illegal is done, i.e. something that
+/// cannot be interpreted abstractly.
+struct stop_interpreter { };
+
+/// check if an abstract value uses a particular register; this is how cycles
+/// are conservatively detected.
+static bool uses_register(const abstract_value *val, simple_reg *reg) throw() {
+
+    if(abstract_value::EXPRESSION == val->kind) {
+        const symbolic_expression *expr(unsafe_cast<const symbolic_expression *>(val));
+        return !!expr->dependent_regs.count(reg);
+
+    } else if(abstract_value::SYMBOL == val->kind) {
+        const symbolic_value *sym(unsafe_cast<const symbolic_value *>(val));
+        return sym->reg == reg;
+
+    } else {
+        return false;
+    }
+}
+
+/// exception value that is thrown if interpretation should stop
+const static stop_interpreter STOP_INTERPRETER;
+
+/// perform a binary operation on two abstract values
+template <template <typename L, typename R, typename O> class OpFunctor>
+abstract_value *apply_binary(
+    simple_instr *instr,        // instruction being executed
+    simple_reg *dest_reg,       // what is the reg's old value?
+    abstract_value *a0,         // left param of binary operator
+    abstract_value *a1          // right param of binary operator
+) throw(stop_interpreter) {
+
+    // filter out any invalid operations and instantiate the operator templates
+    typedef typename binary_op_functor_filter<OpFunctor, int>::functor int_functor;
+    typedef typename binary_op_functor_filter<OpFunctor, unsigned>::functor unsigned_functor;
+    typedef typename binary_op_functor_filter<OpFunctor, double>::functor double_functor;
+
+    // both compile-time values; simple case
+    if(abstract_value::VALUE == a0->kind && a0->kind == a1->kind) {
+
+        concrete_value *p0(unsafe_cast<concrete_value *>(a0));
+        concrete_value *p1(unsafe_cast<concrete_value *>(a1));
+
+        switch(a0->type) {
+        case abstract_value::INT:
+            return new concrete_value(instr, int_functor()(p0->value.as_int, p0->value.as_int));
+
+        case abstract_value::UNSIGNED:
+            return new concrete_value(instr, unsigned_functor()(p0->value.as_uint, p0->value.as_uint));
+
+        case abstract_value::FLOAT:
+            return new concrete_value(instr, double_functor()(p0->value.as_float, p0->value.as_float));
+
+        default:
+            assert(false);
+            break;
+        }
+
+    // need to compute an expression;
+    } else {
+        if(uses_register(a0, dest_reg) || uses_register(a1, dest_reg)) {
+            throw STOP_INTERPRETER;
+        }
+
+        return new symbolic_expression(instr, a0, a1);
+    }
+}
+
+/// perform a unary operation on two abstract values
+template <template <typename L, typename O> class OpFunctor>
+abstract_value *apply_unary(
+    simple_instr *instr,        // instruction being executed
+    simple_reg *dest_reg,       // what is the reg's old value?
+    abstract_value *a0          // left param of binary operator
+) throw(stop_interpreter) {
+
+    // filter out any invalid operations and instantiate the operator templates
+    typedef typename unary_op_functor_filter<OpFunctor, int>::functor int_functor;
+    typedef typename unary_op_functor_filter<OpFunctor, unsigned>::functor unsigned_functor;
+    typedef typename unary_op_functor_filter<OpFunctor, double>::functor double_functor;
+
+    // both compile-time values; simple case
+    if(abstract_value::VALUE == a0->kind) {
+
+        concrete_value *p0(unsafe_cast<concrete_value *>(a0));
+
+        switch(a0->type) {
+        case abstract_value::INT:
+            return new concrete_value(instr, int_functor()(p0->value.as_int));
+
+        case abstract_value::UNSIGNED:
+            return new concrete_value(instr, unsigned_functor()(p0->value.as_uint));
+
+        case abstract_value::FLOAT:
+            return new concrete_value(instr, double_functor()(p0->value.as_float));
+
+        default:
+            assert(false);
+            break;
+        }
+
+    // need to compute an expression;
+    } else {
+        if(uses_register(a0, dest_reg)) {
+            throw STOP_INTERPRETER;
+        }
+
+        return new symbolic_expression(instr, a0);
+    }
+}
+
+/// maps label symbols to the instructions following the labels
 typedef std::map<simple_sym *, simple_instr *> branch_map;
 
-/// check to see if this code can be interpreted at compile time
-static bool is_interpretable(simple_instr *in) throw() {
-    for(; 0 != in; in = in->next) {
+/// maps registers to their abstract values
+class symbol_map : public std::map<simple_reg *, abstract_value *> {
+public:
+
+    abstract_value *&operator[](simple_reg *reg) throw() {
+        assert(0 != reg);
+        return this->std::map<simple_reg *, abstract_value *>::operator[](reg);
+    }
+};
+
+/// the state of the abstract interpreter
+struct interpreter_state {
+    branch_map branch_targets;
+    symbol_map registers;
+
+    simple_instr *pc;
+
+    bool did_return;
+    abstract_value *return_val;
+};
+
+
+/// build up a table of all registers
+static void assign_symbolic_value(
+    simple_reg *reg,
+    simple_reg **,
+    simple_instr *,
+    symbol_map &symbols
+) throw() {
+    if(0U == symbols.count(reg)) {
+        assert(0 != reg);
+        symbols[reg] = new symbolic_value(reg);
+    }
+}
+
+/// try to set up the interpreter
+static bool setup_interpreter(interpreter_state &s) throw() {
+    for(simple_instr *in(s.pc); 0 != in; in = in->next) {
+
+        // assign symbolic values to all registers
+        for_each_var_use(assign_symbolic_value, in, s.registers);
+        for_each_var_def(assign_symbolic_value, in, s.registers);
+
         switch(in->opcode) {
+        case LABEL_OP:
+            s.branch_targets[in->u.label.lab] = in->next;
+            continue;
+
         case CALL_OP: case LOAD_OP: case STR_OP: case MCPY_OP:
             return false;
+
         case LDC_OP:
             if(IMMED_SYMBOL == in->u.ldc.value.format) {
                 return false;
@@ -40,369 +463,237 @@ static bool is_interpretable(simple_instr *in) throw() {
     return true;
 }
 
-/// get the basic blocks associated with each label
-static void get_branch_targets(cfg &flow, branch_map &bt) throw() {
-    basic_block_iterator bb_it(flow.begin()), bb_end(flow.end());
-    for(; bb_it != bb_end; ++bb_it) {
-        simple_instr *in((*bb_it)->first);
-        if(0 != in && LABEL_OP == in->opcode) {
-            bt[in->u.label.lab] = in;
-        }
-    }
+#define LOOKUP_ARGS \
+    src1 = s.registers[src1_reg]; \
+    src2 = s.registers[src2_reg]; \
+    dst = &(s.registers[dst_reg]);
+
+static bool assign(abstract_value **dst, abstract_value *src) throw() {
+    dec_ref(*dst);
+    *dst = src;
+    return true;
 }
 
-/// runtime value
-struct value {
-public:
-    union {
-        int as_int;
-        unsigned as_uint;
-        double as_float;
-    } val;
-    enum {
-        INT, UNSIGNED, FLOAT
-    } type;
-};
-
-struct eval_state {
-public:
-    std::map<simple_reg *, value> regs;
-    branch_map branch_targets;
-    value return_val;
-
-    simple_instr *pc;
-    simple_instr *ret_pc;
-
-    bool has_return_val;
-    bool has_returned;
-
-    simple_type *return_type;
-};
-
-template <
-    template <typename L, typename R, typename O>
-    class OpFunctor,
-    typename L0
->
-class op_functor_filter {
-public:
-    typedef OpFunctor<L0,L0,L0> functor;
-};
-
-class useless_double_functor {
-public:
-    double operator()(const double &, const double &) throw() {
-        return 0.0;
+/// attempt to interpret an instruction. interpretation will fail for one of a
+/// few reasons:
+///     1) a control branch depends on a symbolic value/expression
+//      2) there is a cyclic dependency in with some symbolic value, e.g. a new
+//         instance of a register depends on a previous instance, where the
+//         previous instance was symbolic
+//      3)
+static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) {
+    if(0 == s.pc) {
+        return false;
     }
-};
 
-#define USELESS_DOUBLE_FUNCTOR(the_op) \
-    template <> \
-    class op_functor_filter<op::the_op, double> { \
-    public: \
-        typedef useless_double_functor functor; \
-    };
-
-USELESS_DOUBLE_FUNCTOR(modulo)
-USELESS_DOUBLE_FUNCTOR(bitwise_and)
-USELESS_DOUBLE_FUNCTOR(bitwise_or)
-USELESS_DOUBLE_FUNCTOR(bitwise_xor)
-
-template <
-    template <typename L, typename R, typename O>
-    class OpFunctor
->
-static value eval_binary_operator(eval_state &s, simple_reg *a0, simple_reg *a1) throw() {
-    value &l(s.regs[a0]);
-    value &r(s.regs[a1]);
-    value ret;
-    ret.type = l.type;
-
-    typedef typename op_functor_filter<OpFunctor, int>::functor int_functor;
-    typedef typename op_functor_filter<OpFunctor, unsigned>::functor unsigned_functor;
-    typedef typename op_functor_filter<OpFunctor, double>::functor double_functor;
-
-    switch(l.type) {
-    case value::INT:
-        ret.val.as_int = int_functor()(l.val.as_int, r.val.as_int);
-        fprintf(stderr, "%d op %d = %d\n", l.val.as_int, r.val.as_int, ret.val.as_int);
-        return ret;
-
-    case value::UNSIGNED:
-        ret.val.as_uint = unsigned_functor()(l.val.as_uint, r.val.as_uint);
-        fprintf(stderr, "%u op %u = %u\n", l.val.as_uint, r.val.as_uint, ret.val.as_uint);
-        return ret;
-
-    case value::FLOAT:
-        ret.val.as_float = double_functor()(l.val.as_float, r.val.as_float);
-        fprintf(stderr, "%lf op %lf = %lf\n", l.val.as_float, r.val.as_float, ret.val.as_float);
-        return ret;
-    }
-}
-
-/// interpret a single instruction; returns true if execution should continue
-static bool interpret_instruction(eval_state &s) throw() {
     simple_instr *in(s.pc);
 
-    if(0 == in) {
-        s.has_returned = false;
-        return false;
-    }
-
-    // assume the next instruction should be the next "program counter"
+    // common case: next instruction is the next pc
     s.pc = in->next;
 
-    // mostly a convenience; unsafe to use unless used in the right context!
-    simple_reg *from_reg(in->u.base.src1);
-    simple_reg *from_reg_alt(in->u.base.src2);
-    simple_reg *to_reg(in->u.base.dst);
+    abstract_value *src1(0);
+    abstract_value *src2(0);
+    abstract_value **dst(0);
+
+    // conveniences for the common case, unsafe for other cases, unless manually
+    // assigned to!
+    simple_reg *src1_reg(in->u.base.src1);
+    simple_reg *src2_reg(in->u.base.src2);
+    simple_reg *dst_reg(in->u.base.dst);
+
+    concrete_value *val(0);
 
     switch(in->opcode) {
-    case NOP_OP:
-        return true;
+    case NOP_OP: return true;
 
     case RET_OP:
+        s.did_return = true;
         if(0 != in->u.base.src1) {
-            s.has_return_val = true;
-            s.return_val = s.regs[in->u.base.src1];
+            s.return_val = s.registers[in->u.base.src1];
         }
-        s.has_returned = true;
-        s.return_type = in->type;
-        s.ret_pc = in;
-
-        fprintf(stderr, "\n\n");
         return false;
 
-    case STR_OP: assert(false);  return false;
+    case STR_OP: assert(false); return false;
     case MCPY_OP: assert(false); return false;
 
+    // copy from one register into another; making sure to update ref counts
+    // accordingly
     case CPY_OP:
-        s.regs[in->u.base.dst] = s.regs[in->u.base.src1];
+        if(src1_reg == dst_reg) {
+            return true;
+
+        // load src first, just in case src and *dst are the same
+        } else {
+            src1 = s.registers[src1_reg];
+            inc_ref(src1);
+
+            dst = &(s.registers[dst_reg]);
+            dec_ref(*dst);
+
+            *dst = src1;
+        }
         return true;
 
-    case CVT_OP: {
-        simple_type *from_type(from_reg->var->type);
-        simple_type *to_type(to_reg->var->type);
+    // convert a value of one type to another type
+    case CVT_OP:
 
-        switch(from_type->base) {
+        src1 = s.registers[src1_reg];
+        dst = &(s.registers[dst_reg]);
+
+        switch(dst_reg->var->type->base) {
         case SIGNED_TYPE:
-            switch(to_type->base) {
-            case SIGNED_TYPE:
-                s.regs[to_reg] = s.regs[from_reg];
-                return true;
+            return assign(dst, apply_unary<cast_to_int>(in, dst_reg, src1));
 
-            case UNSIGNED_TYPE:
-                s.regs[to_reg].type = value::UNSIGNED;
-                s.regs[to_reg].val.as_uint = (unsigned) s.regs[from_reg].val.as_int;
-                return true;
-
-            case FLOAT_TYPE:
-                s.regs[to_reg].type = value::FLOAT;
-                s.regs[to_reg].val.as_float = (double) s.regs[from_reg].val.as_float;
-                return true;
-
-            default: // abort
-                return false;
-            }
         case UNSIGNED_TYPE:
-            switch(to_type->base) {
-            case SIGNED_TYPE:
-                s.regs[to_reg].type = value::INT;
-                s.regs[to_reg].val.as_int = (int) s.regs[from_reg].val.as_uint;
-                return true;
+            return assign(dst, apply_unary<cast_to_unsigned>(in, dst_reg, src1));
 
-            case UNSIGNED_TYPE:
-                s.regs[to_reg] = s.regs[from_reg];
-                return true;
-
-            case FLOAT_TYPE:
-                s.regs[to_reg].type = value::FLOAT;
-                s.regs[to_reg].val.as_float = (double) s.regs[from_reg].val.as_uint;
-                return true;
-
-            default: // abort
-                return false;
-            }
         case FLOAT_TYPE:
-            switch(to_type->base) {
-            case SIGNED_TYPE:
-                s.regs[to_reg].type = value::INT;
-                s.regs[to_reg].val.as_int = (int) s.regs[from_reg].val.as_float;
-                return true;
+            return assign(dst, apply_unary<cast_to_double>(in, dst_reg, src1));
 
-            case UNSIGNED_TYPE:
-                s.regs[to_reg].type = value::UNSIGNED;
-                s.regs[to_reg].val.as_uint = (int) s.regs[from_reg].val.as_float;
-                return true;
-
-            case FLOAT_TYPE:
-                s.regs[to_reg] = s.regs[from_reg];
-                return true;
-
-            default: // abort
-                return false;
-            }
         default: // abort
+            assert(false);
             return false;
         }
         break;
-    }
 
-    case NEG_OP:
-        s.regs[to_reg] = s.regs[from_reg];
-        switch(s.regs[from_reg].type) {
-        case value::INT: case value::UNSIGNED:
-            s.regs[to_reg].val.as_int *= -1;
-            break;
-        case value::FLOAT:
-            s.regs[to_reg].val.as_float *= -1.0;
-            break;
-        }
-        return true;
+    case NEG_OP: LOOKUP_ARGS
+        return assign(dst, apply_unary<op::negate>(in, dst_reg, src1));
 
-    case NOT_OP:
-        s.regs[to_reg] = s.regs[from_reg];
-        s.regs[to_reg].val.as_uint = ~(s.regs[to_reg].val.as_uint);
-        return true;
+    case NOT_OP: LOOKUP_ARGS
+        return assign(dst, apply_unary<op::bitwise_not>(in, dst_reg, src1));
 
     case LOAD_OP: assert(false);  return false;
 
-    case ADD_OP:
-        fprintf(stderr, "add ");
-        s.regs[to_reg] = eval_binary_operator<op::add>(s, from_reg, from_reg_alt);
-        return true;
+    case ADD_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<op::add>(in, dst_reg, src1, src2));
 
-    case SUB_OP:
-        fprintf(stderr, "sub ");
-        s.regs[to_reg] = eval_binary_operator<op::subtract>(s, from_reg, from_reg_alt);
-        return true;
+    case SUB_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<op::subtract>(in, dst_reg, src1, src2));
 
-    case MUL_OP:
-        fprintf(stderr, "mul ");
-        s.regs[to_reg] = eval_binary_operator<op::multiply>(s, from_reg, from_reg_alt);
-        return true;
+    case MUL_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<op::multiply>(in, dst_reg, src1, src2));
 
-    case DIV_OP:
-        fprintf(stderr, "div ");
-        s.regs[to_reg] = eval_binary_operator<op::divide>(s, from_reg, from_reg_alt);
-        return true;
+    case DIV_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<op::divide>(in, dst_reg, src1, src2));
 
-    case REM_OP:
-        fprintf(stderr, "rem ");
-        s.regs[to_reg] = eval_binary_operator<op::modulo>(s, from_reg, from_reg_alt);
-        return true;
+    case REM_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<op::modulo>(in, dst_reg, src1, src2));
 
-    case MOD_OP:
-        s.regs[to_reg].type = s.regs[from_reg].type;
-        s.regs[to_reg].val.as_int = op::mod(s.regs[from_reg].val.as_int, s.regs[from_reg_alt].val.as_int);
-        return true;
+    case MOD_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<suif_mod>(in, dst_reg, src1, src2));
 
-    case AND_OP:
-        fprintf(stderr, "and ");
-        s.regs[to_reg] = eval_binary_operator<op::bitwise_and>(s, from_reg, from_reg_alt);
-        return true;
+    case AND_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<op::bitwise_and>(in, dst_reg, src1, src2));
 
-    case IOR_OP:
-        fprintf(stderr, "ior ");
-        s.regs[to_reg] = eval_binary_operator<op::bitwise_or>(s, from_reg, from_reg_alt);
-        return true;
+    case IOR_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<op::bitwise_or>(in, dst_reg, src1, src2));
 
-    case XOR_OP:
-        fprintf(stderr, "xor ");
-        s.regs[to_reg] = eval_binary_operator<op::bitwise_xor>(s, from_reg, from_reg_alt);
-        return true;
+    case XOR_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<op::bitwise_xor>(in, dst_reg, src1, src2));
 
-    case ASR_OP:
-        s.regs[to_reg].type = s.regs[from_reg].type;
-        s.regs[to_reg].val.as_int = op::asr(s.regs[from_reg].val.as_int, s.regs[from_reg_alt].val.as_int);
-        return true;
+    case ASR_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<suif_asr>(in, dst_reg, src1, src2));
 
-    case LSL_OP:
-        s.regs[to_reg].type = s.regs[from_reg].type;
-        s.regs[to_reg].val.as_int = op::lsl(s.regs[from_reg].val.as_int, s.regs[from_reg_alt].val.as_int);
-        return true;
+    case LSL_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<suif_lsl>(in, dst_reg, src1, src2));
 
-    case LSR_OP:
-        s.regs[to_reg].type = s.regs[from_reg].type;
-        s.regs[to_reg].val.as_int = op::lsr(s.regs[from_reg].val.as_int, s.regs[from_reg_alt].val.as_int);
-        return true;
+    case LSR_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<suif_lsr>(in, dst_reg, src1, src2));
 
-    case ROT_OP:
-        s.regs[to_reg].type = s.regs[from_reg].type;
-        s.regs[to_reg].val.as_int = op::rot(s.regs[from_reg].val.as_int, s.regs[from_reg_alt].val.as_int);
-        return true;
+    case ROT_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<suif_rot>(in, dst_reg, src1, src2));
 
-    case SEQ_OP:
-        fprintf(stderr, "seq ");
-        s.regs[to_reg] = eval_binary_operator<op::equal>(s, from_reg, from_reg_alt);
-        return true;
+    case SEQ_OP: LOOKUP_ARGS
+        if(src1 == src2) {
+            return assign(dst, new concrete_value(in, (int) 1));
+        }
+        return assign(dst, apply_binary<op::equal>(in, dst_reg, src1, src2));
 
-    case SNE_OP:
-        fprintf(stderr, "sne ");
-        s.regs[to_reg] = eval_binary_operator<op::not_equal>(s, from_reg, from_reg_alt);
-        return true;
+    case SNE_OP: LOOKUP_ARGS
+        return assign(dst, apply_binary<op::not_equal>(in, dst_reg, src1, src2));
 
-    case SL_OP:
-        fprintf(stderr, "sl ");
-        s.regs[to_reg] = eval_binary_operator<op::less_than>(s, from_reg, from_reg_alt);
-        return true;
+    case SL_OP: LOOKUP_ARGS
+        if(src1 == src2) {
+            return assign(dst, new concrete_value(in, (int) 0));
+        }
+        return assign(dst, apply_binary<op::less_than>(in, dst_reg, src1, src2));
 
-    case SLE_OP:
-        fprintf(stderr, "sle ");
-        s.regs[to_reg] = eval_binary_operator<op::less_than_equal>(s, from_reg, from_reg_alt);
-        return true;
+    case SLE_OP: LOOKUP_ARGS
+        if(src1 == src2) {
+            return assign(dst, new concrete_value(in, (int) 1));
+        }
+        return assign(dst, apply_binary<op::less_than_equal>(in, dst_reg, src1, src2));
 
     case JMP_OP:
         s.pc = s.branch_targets[in->u.label.lab];
         return true;
 
     case BTRUE_OP:
-        from_reg = in->u.bj.src;
-        if(s.regs[from_reg].val.as_int) {
+        src1 = s.registers[in->u.bj.src];
+        if(abstract_value::VALUE != src1->kind) {
+            throw STOP_INTERPRETER;
+        }
+
+        val = unsafe_cast<concrete_value *>(src1);
+        if(val->value.as_int) {
             s.pc = s.branch_targets[in->u.bj.target];
         }
         return true;
 
     case BFALSE_OP:
-        from_reg = in->u.bj.src;
-        if(!(s.regs[from_reg].val.as_int)) {
+        src1 = s.registers[in->u.bj.src];
+        if(abstract_value::VALUE != src1->kind) {
+            throw STOP_INTERPRETER;
+        }
+
+        val = unsafe_cast<concrete_value *>(src1);
+        if(!val->value.as_int) {
             s.pc = s.branch_targets[in->u.bj.target];
         }
         return true;
 
+    // create a concrete value :D note: this does not use the normal assign
+    // as abstract_values initialize with refcount=1
     case LDC_OP:
-        to_reg = in->u.ldc.dst;
+        dst = &(s.registers[in->u.ldc.dst]);
+        dec_ref(*dst);
+
         switch(in->u.ldc.value.format) {
         case IMMED_INT:
-            s.regs[to_reg].type = value::INT;
-            s.regs[to_reg].val.as_int = in->u.ldc.value.u.ival;
+            if(SIGNED_TYPE == in->u.ldc.dst->var->type->base) {
+                *dst = new concrete_value(in, in->u.ldc.value.u.ival);
+            } else {
+                *dst = new concrete_value(in,
+                    static_cast<unsigned>(in->u.ldc.value.u.ival)
+                );
+            }
             return true;
         case IMMED_FLOAT:
-            s.regs[to_reg].type = value::FLOAT;
-            s.regs[to_reg].val.as_float = in->u.ldc.value.u.fval;
+            *dst = new concrete_value(in, in->u.ldc.value.u.fval);
             return true;
-        case IMMED_SYMBOL:
+        default:
             assert(false);
             return false;
         }
-        break;
 
     case CALL_OP: assert(false);  return false;
 
+    // multi-way branch
     case MBR_OP: {
-        from_reg = in->u.mbr.src;
-        int64_t result(0);
-        if(UNSIGNED_TYPE == from_reg->var->type->base) {
-            result = s.regs[from_reg].val.as_uint;
+        src1 = s.registers[in->u.mbr.src];
+        if(abstract_value::VALUE != src1->kind) {
+            throw STOP_INTERPRETER;
         } else {
-            result = s.regs[from_reg].val.as_int;
-        }
-        result -= in->u.mbr.offset;
+            val = unsafe_cast<concrete_value *>(src1);
 
-        if(result < 0 || in->u.mbr.ntargets < result) {
-            s.pc = s.branch_targets[in->u.mbr.deflab];
-        } else {
-            s.pc = s.branch_targets[in->u.mbr.targets[result]];
+            int result(val->value.as_int);
+            result -= in->u.mbr.offset;
+
+            if(result < 0 || in->u.mbr.ntargets < result) {
+                s.pc = s.branch_targets[in->u.mbr.deflab];
+            } else {
+                s.pc = s.branch_targets[in->u.mbr.targets[result]];
+            }
         }
 
         return true;
@@ -418,74 +709,45 @@ static bool interpret_instruction(eval_state &s) throw() {
     return false;
 }
 
-/// evaluate functions that are pure and make no use of their actual arguments
-void eval_pure_function(optimizer &o, cfg &flow) throw() {
+/// attempt to perform an abstract interpretation of a function
+void abstract_evaluator(optimizer &o) throw() {
 #ifndef ECE540_DISABLE_EVAL
-    simple_instr *first_instr(o.first_instruction());
 
-    if(is_interpretable(first_instr)) {
-        eval_state state;
-        state.has_return_val = false;
-        state.has_returned = false;
-        state.pc = first_instr;
-        state.return_type = 0;
+    interpreter_state s;
+    s.pc = o.first_instruction();
+    s.did_return = false;
+    s.return_val = 0;
 
-        get_branch_targets(flow, state.branch_targets);
-
-        for(; interpret_instruction(state); ) {
-            // ...
+    if(setup_interpreter(s)) {
+        try {
+            while(interpret_instruction(s)) { /* loop a doop */ }
+        } catch(stop_interpreter &) {
+            goto cleanup;
         }
-
-        // weird
-        if(!state.has_returned) {
-            return;
-        }
-
-        o.changed_block();
-        o.changed_def();
-        o.changed_use();
-
-        // function should just be a single return op
-        if(!state.has_return_val) {
-            first_instr->opcode = RET_OP;
-            first_instr->type = state.return_type;
-            first_instr->u.base.dst = 0;
-            first_instr->u.base.src1 = 0;
-            first_instr->u.base.src2 = 0;
-        }
-
-        first_instr->type = state.return_type;
-        first_instr->opcode = LDC_OP;
-
-        // we have a return val; let's inject it in
-        simple_instr *new_ret(new_instr(RET_OP, state.return_type));
-        simple_instr *ret(state.ret_pc);
-
-        assert(0 != ret);
-        assert(RET_OP == ret->opcode);
-
-        simple_reg *returned_reg(ret->u.base.src1);
-        simple_reg *new_ret_reg(new_register(returned_reg->var->type, TEMP_REG));
-
-        first_instr->type = returned_reg->var->type;
-
-        switch(state.regs[returned_reg].type) {
-        case value::INT: case value::UNSIGNED:
-            first_instr->u.ldc.value.format = IMMED_INT;
-            first_instr->u.ldc.value.u.ival = state.regs[returned_reg].val.as_int;
-            break;
-        case value::FLOAT:
-            first_instr->u.ldc.value.format = IMMED_FLOAT;
-            first_instr->u.ldc.value.u.fval = state.regs[returned_reg].val.as_float;
-            break;
-        }
-
-        first_instr->u.ldc.dst = new_ret_reg;
-        new_ret->u.base.src1 = new_ret_reg;
-
-        instr::insert_after(new_ret, first_instr);
     }
+
+    if(!s.did_return) {
+        goto cleanup;
+    }
+
+    // okay, we can do code gen now!
+    fprintf(stderr, "successfully abstractly interpreted function!\n");
+
+    // time to clean things up
+cleanup:
+
+    // clear out the symbolic values
+    s.branch_targets.clear();
+    symbol_map::iterator reg_it(s.registers.begin())
+                       , reg_end(s.registers.end());
+
+    for(; reg_it != reg_end; ++reg_it) {
+        dec_ref(reg_it->second);
+        reg_it->second = 0;
+    }
+
+    s.registers.clear();
+
 #endif
 }
-
 
