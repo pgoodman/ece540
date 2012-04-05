@@ -24,6 +24,8 @@ extern "C" {
 #include "include/data_flow/var_def.h"
 #include "include/data_flow/var_use.h"
 
+#include "include/opt/eval.h"
+
 /// filters out specific operations that cannot be performed on floating point
 /// numbers
 template <
@@ -405,8 +407,13 @@ static abstract_value *combine_constant_adds(
     if(match_binary(expr, sub_val, sub_expr)) {
 
         // okay, lets flatten this
-        concrete_value *new_sub_val(new concrete_value(sub_val->instr, val->value.as_int + sub_val->value.as_int));
+        concrete_value *new_sub_val(new concrete_value(
+            sub_val->instr,
+            val->value.as_int + sub_val->value.as_int
+        ));
+
         unsafe_dec_ref(new_sub_val); // make sure ref count on the sub-value is 1, not 2
+
         return new symbolic_expression(instr, new_sub_val, sub_expr);
     }
 
@@ -528,8 +535,10 @@ struct interpreter_state {
     branch_map branch_targets;
     symbol_map registers;
 
-    simple_instr *pc;
-    simple_instr *ret;
+    simple_instr *pc;       // current program counter
+    simple_instr *ret;      // instruction used to return a value
+    simple_instr *error;    // instruction where an error occurred
+    simple_instr *bp;       // breakpoint, i.e. instruction before which to stop interpreting
 
     bool did_return;
     abstract_value *return_val;
@@ -551,6 +560,7 @@ static void assign_symbolic_value(
 
 /// try to set up the interpreter
 static bool setup_interpreter(interpreter_state &s) throw() {
+    bool ret(true);
     for(simple_instr *in(s.pc); 0 != in; in = in->next) {
 
         // assign symbolic values to all registers
@@ -563,18 +573,19 @@ static bool setup_interpreter(interpreter_state &s) throw() {
             continue;
 
         case CALL_OP: case LOAD_OP: case STR_OP: case MCPY_OP:
-            return false;
+            ret = false;
+            continue;
 
         case LDC_OP:
             if(IMMED_SYMBOL == in->u.ldc.value.format) {
-                return false;
+                ret = false;
             }
             continue;
         default:
             continue;
         }
     }
-    return true;
+    return ret;
 }
 
 #define LOOKUP_ARGS \
@@ -612,7 +623,14 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
 
     simple_instr *in(s.pc);
 
+    // stop the interpreter if we hit a breakpoint
+    if(in == s.bp) {
+        s.error = 0;
+        throw STOP_INTERPRETER;
+    }
+
     // common case: next instruction is the next pc
+    s.error = in;
     s.pc = in->next;
 
     abstract_value *src1(0);
@@ -633,6 +651,7 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
     case RET_OP:
         s.ret = in;
         s.did_return = true;
+        s.error = 0;
         if(0 != in->u.base.src1) {
             s.return_val = s.registers[in->u.base.src1];
         }
@@ -988,6 +1007,74 @@ static void cleanup_state(interpreter_state &s) throw() {
     s.registers.clear();
 }
 
+/// try to interpret some "straight line" of code, up until the first branch
+/// that goes more than one way. Return the next instruction if it is known
+///
+/// because this isn't as concerned about values, we can be less strict about
+/// how we're interpreting
+eval::breakpoint_status abstract_evaluator_bp(
+    optimizer &o,
+    simple_instr *first_instr,
+    simple_instr *break_point
+) throw() {
+    interpreter_state s;
+    s.pc = first_instr;
+    s.did_return = false;
+    s.return_val = 0;
+    s.error = 0;
+    s.bp = break_point;
+    eval::breakpoint_status status(eval::UNKNOWN);
+
+    setup_interpreter(s);
+
+    for(;;) {
+        try {
+            while(interpret_instruction(s)) { /* loop a doop */ }
+            status = eval::RETURNED;
+        } catch(stop_interpreter &) {
+
+            // we've hit a breakpoint or a return
+            if(0 == s.error) {
+                break;
+            }
+
+            // we've hit a different type of error
+
+            simple_reg *defd_var(0);
+            switch(s.error->opcode) {
+
+            /// we've hit a branch that we can't walk through
+            case BTRUE_OP: case BFALSE_OP: case MBR_OP:
+                break;
+
+            /// we've hit a CALL/LOAD op; force a value to be unknown if it sets to
+            /// a register
+            case CALL_OP: case LOAD_OP:
+                if(for_each_var_def(s.error, defd_var)) {
+                    dec_ref(s.registers[defd_var]);
+                    s.registers[defd_var] = new symbolic_value(defd_var);
+                }
+                continue;
+
+            /// we've hit a store op; continue
+            case STR_OP: continue;
+
+            /// not sure what happened; let's just give up
+            default: break;
+            }
+        }
+    }
+
+    cleanup_state(s);
+
+    // we've reached a breakpoint
+    if(s.pc == s.bp) {
+        return eval::REACHED_BREAKPOINT;
+    }
+
+    return status;
+}
+
 /// attempt to perform an abstract interpretation of a function
 void abstract_evaluator(optimizer &o) throw() {
 #ifndef ECE540_DISABLE_EVAL
@@ -1001,6 +1088,8 @@ void abstract_evaluator(optimizer &o) throw() {
     s.pc = first_instr;
     s.did_return = false;
     s.return_val = 0;
+    s.error = 0;
+    s.bp = 0;
 
     if(setup_interpreter(s)) {
         try {

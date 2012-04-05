@@ -15,6 +15,6 @@ class optimizer;
 class cfg;
 class loop_map;
 
-void hoist_loop_invariant_code(optimizer &, loop_map &) throw();
+void hoist_loop_invariant_code(optimizer &, cfg &, loop_map &) throw();
 
 #endif /* project_LICM_H_ */
