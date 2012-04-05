@@ -7,6 +7,7 @@
  */
 
 #include <cassert>
+#include <cstdlib>
 
 #include "include/opt/cp.h"
 #include "include/cfg.h"
@@ -82,12 +83,13 @@ static bool propagate_in_bb(basic_block *bb, cp_state &s) {
 }
 
 void propagate_copies(optimizer &o, cfg &flow, use_def_map &ud) throw() {
-    //fprintf(stderr, "// cp\n");
-#ifndef ECE540_DISABLE_CP
+    if(0 != getenv("ECE540_DISABLE_CP")) {
+        return;
+    }
+
     cp_state state;
     state.o = &o;
     state.ud = &ud;
     flow.for_each_basic_block(&propagate_in_bb, state);
-#endif
 }
 

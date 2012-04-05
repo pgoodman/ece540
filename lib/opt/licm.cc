@@ -14,6 +14,7 @@ extern "C" {
 #include <vector>
 #include <set>
 #include <map>
+#include <cstdlib>
 
 #include "include/optimizer.h"
 #include "include/cfg.h"
@@ -252,15 +253,12 @@ static void find_invariant_ins(basic_block *bb, invariant_tracker &it) throw() {
             // it's defined multiple times in the loop; ignore
             const unsigned num_defs((*(it.num_defs))[defd_var]);
             if(1U < num_defs) {
-                //printf("/* %s defined %u times */\n", r(defd_var), num_defs);
                 continue;
             }
 
             // if we're loading from memory, that might mean there's a store
             // elsewhere that could potentially affect this
             if(LOAD_OP == in->opcode) {
-                /*|| (LDC_OP == in->opcode && IMMED_SYMBOL == in->u.ldc.value.format)*/
-                //printf("/* %s is a non-constant load */\n", r(defd_var));
                 continue;
             }
 
@@ -271,12 +269,9 @@ static void find_invariant_ins(basic_block *bb, invariant_tracker &it) throw() {
 
                 // not all used vars are invariant
                 if(!it.instruction_is_invariant) {
-                    //printf("/* %s uses vars that aren't (yet) invariant */\n", r(defd_var));
                     continue;
                 }
             }
-
-            //printf("/* %s defines an invariant var */\n", r(defd_var));
 
             // note: later on we will check that the definition dominates all
             //       its uses and dominates all exits
@@ -288,6 +283,8 @@ static void find_invariant_ins(basic_block *bb, invariant_tracker &it) throw() {
     }
 }
 
+/// for each basic block (bb; in the loop), go over all exit blocks (exit_bb;
+/// in the loop) and make sure that bb dominates each exit_bb.
 static void find_dominating_block(basic_block *bb, invariant_tracker &it) throw() {
     std::vector<basic_block *> &loop_exits(*(it.exit_blocks));
     const unsigned num_loop_exits(static_cast<unsigned>(loop_exits.size()));
@@ -765,9 +762,9 @@ static bool hoist_code(optimizer &o, cfg &flow, def_use_map &dum, dominator_map 
     std::set<basic_block *> dominating_blocks;
     it.exit_blocks = &loop_exits;
     it.dominating_blocks = &dominating_blocks;
+
     for_each_basic_block(loop, find_dominating_block, it);
     keep_dominating_ins(it);
-
     if(invariant_ins.empty()) {
         return false;
     }
@@ -776,15 +773,20 @@ static bool hoist_code(optimizer &o, cfg &flow, def_use_map &dum, dominator_map 
     // the loop; this makes it impossible for an invariant variable that would
     // cause the loop to not be executed to be moved outside of the loop
     keep_defs_dominating_uses(it, dum, dm, loop.body);
-
     if(invariant_ins.empty()) {
         return false;
     }
 
-    // clear out any definitions that don't dominate the exit node if we can't
-    // prove that this loop will always do at least one iteration
+    // if we can't prove that this loop will always do at least one iteration
+    // then kill any invariant instruction that:
+    //  a) doesn't dominate the exit of the CFG; or
+    //  b) has no uses outside after the loop
     if(!try_prove_loop_will_run(o, loop)) {
+        // case a)
         keep_defs_dominating_exit(it, dm(flow.exit()));
+
+        // case b) too lazy to handle :-P
+
         if(invariant_ins.empty()) {
             return false;
         }
@@ -793,7 +795,6 @@ static bool hoist_code(optimizer &o, cfg &flow, def_use_map &dum, dominator_map 
     // clear out all instructions that use variables now no longer marked
     // as invariant
     remove_disproved_invariant_ins(it);
-
     if(invariant_ins.empty()) {
         return false;
     }
@@ -848,7 +849,10 @@ static bool hoist_code(optimizer &o, cfg &flow, def_use_map &dum, dominator_map 
 
 /// hoist loop-invariant code out of all loops in a CFG
 void hoist_loop_invariant_code(optimizer &o, cfg &flow, loop_map &lm) throw() {
-#ifndef ECE540_DISABLE_LICM
+    if(0 != getenv("ECE540_DISABLE_LICM")) {
+        return;
+    }
+
     std::vector<loop *> loops;
     order_loops(lm, loops);
 
@@ -868,5 +872,4 @@ void hoist_loop_invariant_code(optimizer &o, cfg &flow, loop_map &lm) throw() {
     if(updated) {
         o.changed_block();
     }
-#endif
 }

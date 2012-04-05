@@ -1077,7 +1077,9 @@ eval::breakpoint_status abstract_evaluator_bp(
 
 /// attempt to perform an abstract interpretation of a function
 void abstract_evaluator(optimizer &o) throw() {
-#ifndef ECE540_DISABLE_EVAL
+    if(0 != getenv("ECE540_DISABLE_EVAL")) {
+        return;
+    }
 
     simple_instr *first_instr(o.first_instruction());
     simple_instr *ret_instr(0);
@@ -1145,7 +1147,5 @@ void abstract_evaluator(optimizer &o) throw() {
         instr::insert_after(dummy_first.next, first_instr);
         instr::insert_after(ret_instr, last);
     }
-
-#endif
 }
 

@@ -9,6 +9,13 @@
 #ifndef project_CF_CC_
 #define project_CF_CC_
 
+#include <map>
+#include <vector>
+#include <cstring>
+#include <cassert>
+#include <stdint.h>
+#include <cstdlib>
+
 extern "C" {
 #   include <simple.h>
 }
@@ -24,12 +31,6 @@ extern "C" {
 
 #include "include/data_flow/var_use.h"
 #include "include/data_flow/var_def.h"
-
-#include <map>
-#include <vector>
-#include <cstring>
-#include <cassert>
-#include <stdint.h>
 
 /// maintains a mapping of non-floating-point-type temporary registers
 /// whose values are loaded with constants
@@ -523,8 +524,10 @@ static bool combine_constants(basic_block *bb, optimizer &o) throw() {
 /// apply the constant folding optimization to a control flow graph. returns
 /// true if the graph was updated.
 void fold_constants(optimizer &opt, cfg &graph) throw() {
-    //fprintf(stderr, "// cf\n");
-#ifndef ECE540_DISABLE_CF
+    if(0 != getenv("ECE540_DISABLE_CF")) {
+        return;
+    }
+
     cf_state state;
     state.opt = &opt;
 
@@ -541,8 +544,6 @@ void fold_constants(optimizer &opt, cfg &graph) throw() {
 
         graph.for_each_basic_block(fold_constants, state);
     }
-
-#endif
 }
 
 #endif /* project_CF_CC_ */

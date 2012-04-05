@@ -8,6 +8,7 @@
 
 #include <cassert>
 #include <vector>
+#include <cstdlib>
 
 #include "include/opt/dce.h"
 #include "include/cfg.h"
@@ -243,8 +244,9 @@ static void do_dce(
 /// determine essential instructions and convert non-essential instructions
 /// into NOPs. Do a final pass over the instructions to clear out NOPs.
 void eliminate_dead_code(optimizer &o, cfg &flow, use_def_map &ud) throw() {
-    //printf("running dce\n");
-#ifndef ECE540_DISABLE_DCE
+    if(0 != getenv("ECE540_DISABLE_DCE")) {
+        return;
+    }
 
     // clear out all unreachable blocks; they will be cleaned up later by the
     // NOP killing pass
@@ -255,6 +257,4 @@ void eliminate_dead_code(optimizer &o, cfg &flow, use_def_map &ud) throw() {
     // clean up useless things
     kill_jmps(o.first_instruction(), o);
     kill_nops(o.first_instruction(), o);
-
-#endif
 }

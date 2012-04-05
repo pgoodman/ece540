@@ -8,6 +8,7 @@
 
 #include <set>
 #include <cassert>
+#include <cstdlib>
 
 extern "C" {
 #   include <simple.h>
@@ -213,7 +214,9 @@ void eliminate_common_sub_expressions(
     cfg &flow,
     available_expression_map &ae_exit
 ) throw() {
-#ifndef ECE540_DISABLE_CSE
+    if(0 != getenv("ECE540_DISABLE_CSE")) {
+        return;
+    }
 
     // mapping of all available expressions; this is actually an incomplete
     // map insofar as it is unsuitable for expression lookup, as it hasn't been
@@ -229,7 +232,5 @@ void eliminate_common_sub_expressions(
 
     // update the graph
     flow.for_each_basic_block(&replace_common_sub_expressions, state);
-#endif
 }
-
 
