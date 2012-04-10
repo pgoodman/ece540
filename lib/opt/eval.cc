@@ -144,14 +144,17 @@ public:
         INT, UNSIGNED, FLOAT, UNKNOWN
     } type;
 
-    enum {
+    typedef enum {
         VALUE       = 1 << 0,
         SYMBOL      = 1 << 1,
-        EXPRESSION  = 1 << 2
-    } kind;
+        EXPRESSION  = 1 << 2,
+        BIG_VALUE   = 1 << 3
+    } kind_type;
+
+    kind_type kind;
 
     enum {
-        KIND = VALUE | SYMBOL | EXPRESSION
+        KIND = VALUE | SYMBOL | EXPRESSION | BIG_VALUE
     };
 
     abstract_value(simple_instr *in) throw()
@@ -161,7 +164,9 @@ public:
         , depth(1)
     { }
 
-    virtual void union_symbols(std::set<simple_reg *> &) throw() = 0;
+    virtual ~abstract_value(void) throw() { };
+
+    //virtual void union_symbols(std::set<simple_reg *> &) throw() = 0;
 };
 
 /// reference counting
@@ -200,7 +205,7 @@ public:
         UNARY, BINARY
     } arity;
 
-    std::set<simple_reg *> dependent_regs;
+    //std::set<simple_reg *> dependent_regs;
 
     abstract_value *left;
     abstract_value *right;
@@ -213,8 +218,8 @@ public:
         , right(a1)
     {
         this->depth = max_depth(a0->depth, a1->depth) + 1;
-        a0->union_symbols(dependent_regs);
-        a1->union_symbols(dependent_regs);
+        //a0->union_symbols(dependent_regs);
+        //a1->union_symbols(dependent_regs);
 
         inc_ref(a0);
         inc_ref(a1);
@@ -231,7 +236,7 @@ public:
         , right(0)
     {
         this->depth = a0->depth + 1;
-        a0->union_symbols(dependent_regs);
+        //a0->union_symbols(dependent_regs);
 
         inc_ref(a0);
 
@@ -248,12 +253,12 @@ public:
             right = 0;
         }
 
-        dependent_regs.clear();
+        //dependent_regs.clear();
     }
 
-    virtual void union_symbols(std::set<simple_reg *> &syms) throw() {
+    /*virtual void union_symbols(std::set<simple_reg *> &syms) throw() {
         syms.insert(dependent_regs.begin(), dependent_regs.end());
-    }
+    }*/
 };
 
 /// represents a single value. The value is known at compile time.
@@ -296,7 +301,7 @@ public:
 
     virtual ~concrete_value(void) throw() { }
 
-    virtual void union_symbols(std::set<simple_reg *> &) throw() { }
+    //virtual void union_symbols(std::set<simple_reg *> &) throw() { }
 };
 
 /// represents a symbolic value stored in a register
@@ -319,9 +324,28 @@ public:
 
     virtual ~symbolic_value(void) throw() { }
 
-    virtual void union_symbols(std::set<simple_reg *> &syms) throw() {
+    /*virtual void union_symbols(std::set<simple_reg *> &syms) throw() {
         syms.insert(reg);
+    }*/
+};
+
+/// represents a "big" value, i.e. we exceeded the maximum sized value, so we
+/// just killed it off and keep this instead.
+struct big_value : public abstract_value {
+public:
+
+    big_value(abstract_value *val) throw()
+        : abstract_value(0)
+    {
+        this->kind = BIG_VALUE;
+        this->type = val->type;
+
+        dec_ref(val);
     }
+
+    virtual ~big_value(void) throw() { }
+
+    //virtual void union_symbols(std::set<simple_reg *> &) throw() { }
 };
 
 /// an exception thrown when something illegal is done, i.e. something that
@@ -333,7 +357,7 @@ public:
 
 /// check if an abstract value uses a particular register; this is how cycles
 /// are conservatively detected.
-static bool uses_register(const abstract_value *val, simple_reg *reg) throw() {
+/*static bool uses_register(const abstract_value *val, simple_reg *reg) throw() {
 
     if(abstract_value::EXPRESSION == val->kind) {
         const symbolic_expression *expr(unsafe_cast<const symbolic_expression *>(val));
@@ -346,7 +370,7 @@ static bool uses_register(const abstract_value *val, simple_reg *reg) throw() {
     } else {
         return false;
     }
-}
+}*/
 
 /// pattern match over a binary expression
 template <typename L, typename R>
@@ -460,9 +484,9 @@ abstract_value *apply_binary(
 
     // need to compute an expression;
     } else {
-        if(uses_register(a0, dest_reg) || uses_register(a1, dest_reg)) {
-            throw STOP_INTERPRETER;
-        }
+        //if(uses_register(a0, dest_reg) || uses_register(a1, dest_reg)) {
+        //    throw STOP_INTERPRETER;
+        //}
 
         abstract_value *ret(combine_constant_adds(instr, a0, a1));
 
@@ -509,9 +533,9 @@ abstract_value *apply_unary(
 
     // need to compute an expression;
     } else {
-        if(uses_register(a0, dest_reg)) {
-            throw STOP_INTERPRETER;
-        }
+        //if(uses_register(a0, dest_reg)) {
+        //    throw STOP_INTERPRETER;
+        //}
 
         return new symbolic_expression(instr, a0);
     }
@@ -600,10 +624,11 @@ enum {
 
 static bool assign(abstract_value **dst, abstract_value *src) throw(stop_interpreter) {
     dec_ref(*dst);
-    *dst = src;
 
     if(MAX_DEPTH < src->depth) {
-        throw STOP_INTERPRETER;
+        *dst = new big_value(src); // too deep of an expression; use a dummy
+    } else {
+        *dst = src;
     }
 
     return true;
@@ -854,16 +879,20 @@ static bool interpret_instruction(interpreter_state &s) throw(stop_interpreter) 
     return false;
 }
 
-static simple_reg *emit_dispatch(simple_instr **prev, abstract_value *val) throw();
+static simple_reg *emit_dispatch(simple_instr **prev, abstract_value *val) throw(stop_interpreter);
 static simple_reg *emit(simple_instr **prev, concrete_value *val) throw();
 static simple_reg *emit(simple_instr **prev, symbolic_value *val) throw();
-static simple_reg *emit(simple_instr **prev, symbolic_expression *val) throw();
+static simple_reg *emit(simple_instr **prev, symbolic_expression *val) throw(stop_interpreter);
 
-static simple_reg *emit_dispatch(simple_instr **prev, abstract_value *val) throw() {
+/// dispatch to various sub-emitters
+static simple_reg *emit_dispatch(simple_instr **prev, abstract_value *val) throw(stop_interpreter) {
     if(abstract_value::VALUE == val->kind) {
         return emit(prev, unsafe_cast<concrete_value *>(val));
     } else if(abstract_value::SYMBOL == val->kind) {
         return emit(prev, unsafe_cast<symbolic_value *>(val));
+    } else if(abstract_value::BIG_VALUE == val->kind) {
+        throw STOP_INTERPRETER;
+        return 0;
     } else {
         return emit(prev, unsafe_cast<symbolic_expression *>(val));
     }
@@ -945,7 +974,7 @@ void inject_register(
 }
 
 /// emit instructions for evaluating unary and binary expressions
-static simple_reg *emit(simple_instr **prev, symbolic_expression *val) throw() {
+static simple_reg *emit(simple_instr **prev, symbolic_expression *val) throw(stop_interpreter) {
 
     if(0 != val->emitted_reg) {
         return val->emitted_reg;
@@ -1107,18 +1136,15 @@ void abstract_evaluator(optimizer &o) throw() {
         return;
     }
 
-    // notify the optimizer that we've done some substantial things
-    o.changed_block();
-    o.changed_def();
-    o.changed_use();
-
     // create the return instruction
     ret_instr = new_instr(RET_OP, s.ret->type);
     ret_instr->prev = 0;
     ret_instr->next = 0;
 
-    // a return with no val; clear out the first instruction, add the thing in
-    if(0 == s.return_val) {
+    // a return with no val or a value that is too big to generate code for;
+    // clear out the first instruction, add the thing in
+    if(0 == s.return_val
+    || abstract_value::BIG_VALUE == s.return_val->kind) {
         first_instr->opcode = NOP_OP;
         instr::insert_after(ret_instr, first_instr);
         cleanup_state(s);
@@ -1132,8 +1158,21 @@ void abstract_evaluator(optimizer &o) throw() {
 
     // okay, we can do code gen now!
     memset(last, 0, sizeof *last);
-    ret_instr->u.base.src1 = emit_dispatch(&last, s.return_val);
+
+    try {
+        ret_instr->u.base.src1 = emit_dispatch(&last, s.return_val);
+    } catch(stop_interpreter &) {
+        free_instr(ret_instr);
+        dec_ref(s.return_val);
+        return;
+    }
+
     dec_ref(s.return_val);
+
+    // notify the optimizer that we've done some substantial things
+    o.changed_block();
+    o.changed_def();
+    o.changed_use();
 
     // clear out the first instruction
     first_instr->opcode = NOP_OP;
