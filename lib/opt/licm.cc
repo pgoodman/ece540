@@ -644,7 +644,7 @@ static bool try_prove_loop_will_run(optimizer &o, loop &loop) throw() {
         return true;
     }
 
-    // not a self-loop; look to see if the first basic block has a successor
+    // not a self-loop; look to see if the first branch block has a successor
     // that exits the loop,
 
     size_t num_non_exit_bbs(0U);
@@ -654,9 +654,7 @@ static bool try_prove_loop_will_run(optimizer &o, loop &loop) throw() {
     if(num_non_exit_bbs == loop.body.size()) {
         return true;
 
-    // try to prove that we will hit
-    }
-    if(0 == first_branch_block) {
+    } else if(0 == first_branch_block) {
         return false; // shouldn't happen
     }
 

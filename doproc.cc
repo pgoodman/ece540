@@ -1,8 +1,8 @@
 
 
-#define MAIN static simple_instr *print_dot(simple_instr *inlist, char *proc_name)
-#   include "dot.cc"
-#undef MAIN
+//#define MAIN static simple_instr *print_dot(simple_instr *inlist, char *proc_name)
+//#   include "dot.cc"
+//#undef MAIN
 
 #include "include/optimizer.h"
 #include "include/opt/cf.h"
@@ -72,6 +72,6 @@ simple_instr *do_procedure(simple_instr *in_list, char *proc_name) {
 
     o.run(CP);
 
-    //return o.first_instruction();
-    return print_dot(o.first_instruction(), proc_name);
+    return o.first_instruction();
+    //return print_dot(o.first_instruction(), proc_name);
 }
